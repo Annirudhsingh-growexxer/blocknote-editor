@@ -159,8 +159,55 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     e.preventDefault();
 
     const normalizedText = plainText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedText.split('\n');
+
+    if (lines.length <= 1) {
+      const el = e.target;
+      insertPlainTextIntoBlock(el, blockId, normalizedText);
+      return;
+    }
+
+    // Handle first line in current block
     const el = e.target;
-    insertPlainTextIntoBlock(el, blockId, normalizedText);
+    const offset = getCursorOffset(el);
+    const textBefore = el.innerText.slice(0, offset);
+    const textAfter = el.innerText.slice(offset);
+    
+    const firstLine = lines[0];
+    const combinedFirstLine = textBefore + firstLine;
+    el.innerText = combinedFirstLine;
+    syncBlockMutation(blockId, { text: combinedFirstLine });
+
+    // Insert subsequent lines as new blocks
+    let lastIndex = blockIndex;
+    let currentTextAfter = textAfter;
+
+    // Remaining lines except the last one inserted as full blocks
+    for (let i = 1; i < lines.length; i++) {
+      const lineText = lines[i];
+      const isLastContent = (i === lines.length - 1);
+      
+      const prev = blocksRef.current[lastIndex];
+      const next = blocksRef.current[lastIndex + 1];
+      const newOrderIndex = insertAfter(prev.order_index, next ? next.order_index : prev.order_index + 2);
+
+      const { data: newBlock } = await api.post('/api/blocks', {
+        document_id: documentId,
+        type: 'paragraph',
+        content: { text: lineText + (isLastContent ? currentTextAfter : '') },
+        order_index: newOrderIndex,
+      });
+
+      const newBlocks = [...blocksRef.current];
+      newBlocks.splice(lastIndex + 1, 0, newBlock);
+      updateBlocksState(newBlocks);
+      lastIndex++;
+      
+      if (isLastContent) {
+        setFocusedId(newBlock.id);
+        focusBlock(newBlock.id, 'start');
+      }
+    }
   };
 
   const handleTypeChange = async (blockId, nextType) => {
@@ -211,7 +258,7 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     if (e.key === '/') {
        const cursorOffset = getCursorOffset(el);
        const fullText = normalizeEditableText(el.innerText);
-       if (cursorOffset === 0) {
+       if (cursorOffset === 0 && fullText.trim() === '') {
           e.preventDefault();
           const rect = el.getBoundingClientRect();
           setSlashState({
@@ -260,7 +307,15 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       
       // If code block, enter just inserts newline, wait, tab inserts spaces.
       if (currentBlock.type === 'code') {
-         document.execCommand('insertLineBreak');
+         const sel = window.getSelection();
+         const range = sel.getRangeAt(0);
+         range.deleteContents();
+         const br = document.createTextNode('\n');
+         range.insertNode(br);
+         range.setStartAfter(br);
+         range.setEndAfter(br);
+         sel.removeAllRanges();
+         sel.addRange(range);
          return;
       }
 
@@ -272,6 +327,12 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       // PATCH current block
       el.innerText = textBefore;
       syncBlockMutation(blockId, { text: textBefore });
+
+      // Explicitly save the old block immediately to avoid data duplication
+      // if the user closes the window before the 1s auto-save buffer flushes.
+      api.patch(`/api/blocks/${blockId}`, { 
+        content: { ...currentBlock.content, text: textBefore } 
+      }).catch(console.error);
 
       // Generate order index for new block
       const prevIndex = currentBlock.order_index;
@@ -375,7 +436,15 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     if (e.key === 'Tab') {
       if (currentBlock.type === 'code') {
          e.preventDefault();
-         document.execCommand('insertText', false, '  ');
+         const sel = window.getSelection();
+         if (!sel.rangeCount) return;
+         const range = sel.getRangeAt(0);
+         range.deleteContents();
+         const textNode = document.createTextNode('  ');
+         range.insertNode(textNode);
+         range.collapse(false);
+         sel.removeAllRanges();
+         sel.addRange(range);
       }
     }
   };
@@ -406,8 +475,6 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
      const el = document.querySelector(`.block-wrapper[data-id="${slashState.blockId}"] .block-content`);
      if (el) {
         if (revertText) {
-           el.innerText = slashState.originalText;
-        } else {
            el.innerText = slashState.originalText;
         }
         syncBlockMutation(slashState.blockId, { text: el.innerText });

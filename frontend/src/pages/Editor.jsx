@@ -53,6 +53,9 @@ export default function Editor({ documentId, onTitleChange }) {
           <h1 
             contentEditable 
             suppressContentEditableWarning
+            role="textbox"
+            aria-label="Document title"
+            aria-multiline="false"
             onBlur={handleTitleBlur}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }}
             style={{ 

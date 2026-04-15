@@ -45,7 +45,11 @@ export default function ShareModal({ documentId, initialIsPublic, initialToken, 
         borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '480px', padding: '24px',
         animation: 'modalIn var(--t-mid) var(--ease-snap)', position: 'relative'
       }}>
-        <button onClick={onClose} style={{ position: 'absolute', top: '24px', right: '24px', color: 'var(--text-secondary)' }}>
+        <button 
+          onClick={onClose} 
+          aria-label="Close modal"
+          style={{ position: 'absolute', top: '24px', right: '24px', color: 'var(--text-secondary)' }}
+        >
           <X size={20} />
         </button>
         
@@ -95,12 +99,6 @@ export default function ShareModal({ documentId, initialIsPublic, initialToken, 
           </p>
         )}
 
-        <style>{`
-          @keyframes modalIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-          }
-        `}</style>
       </div>
     </div>
   );

@@ -72,6 +72,24 @@ input {
   font-family: inherit;
 }
 
+
 [contenteditable] {
   outline: none;
+}
+
+.block-content:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+  display: block; /* For Firefox */
+}
+
+@keyframes menuIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }

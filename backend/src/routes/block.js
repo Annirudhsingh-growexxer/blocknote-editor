@@ -5,6 +5,19 @@ const rejectSharedWrites = require('../middleware/rejectSharedWrites');
 
 const router = express.Router();
 
+function validateBlockContent(content) {
+  if (content && typeof content === 'object') {
+    if (content.text && typeof content.text === 'string' && content.text.length > 50000) {
+      return 'Content text too long';
+    }
+    if (content.url && typeof content.url === 'string' && content.url.length > 2000) {
+      return 'Image URL too long';
+    }
+  }
+  return null;
+}
+
+
 router.use(rejectSharedWrites);
 router.use(authMiddleware);
 
@@ -41,6 +54,9 @@ async function touchDocument(documentId) {
 router.post('/', async (req, res) => {
   try {
     const { document_id, type, content, order_index, parent_id } = req.body;
+    
+    const contentError = validateBlockContent(content);
+    if (contentError) return res.status(422).json({ error: contentError });
     
     const isOwner = await verifyDocumentOwnership(document_id, req.user.id);
     if (!isOwner) return res.status(403).json({ error: 'Forbidden' });
@@ -129,7 +145,12 @@ router.patch('/:id', async (req, res) => {
     if (!blockData) return;
 
     const { type, content, order_index } = req.body;
+    
+    const contentError = validateBlockContent(content);
+    if (contentError) return res.status(422).json({ error: contentError });
+
     let updates = [];
+
     let values = [];
     let idx = 1;
 

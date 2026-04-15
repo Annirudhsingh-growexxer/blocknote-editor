@@ -9,7 +9,8 @@ const SALT_ROUNDS = 12;
 
 router.post('/register', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = req.body.email ? req.body.email.trim().toLowerCase() : '';
     
     // Validate email format and password
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -22,7 +23,7 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if email already exists
-    const userExist = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+    const userExist = await db.query('SELECT id FROM users WHERE email ILIKE $1', [email]);
     if (userExist.rows.length > 0) {
       return res.status(409).json({ error: 'Email already in use' });
     }
@@ -54,9 +55,10 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = req.body.email ? req.body.email.trim().toLowerCase() : '';
 
-    const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    const result = await db.query('SELECT * FROM users WHERE email ILIKE $1', [email]);
     const user = result.rows[0];
 
     if (!user) {

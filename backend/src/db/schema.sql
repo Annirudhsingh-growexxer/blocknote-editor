@@ -17,6 +17,7 @@ CREATE TABLE documents (
   title       VARCHAR(500) NOT NULL DEFAULT 'Untitled',
   share_token VARCHAR(64) UNIQUE,
   is_public   BOOLEAN DEFAULT FALSE,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_documents_user ON documents(user_id);

@@ -7,19 +7,33 @@ const rejectSharedWrites = require('../middleware/rejectSharedWrites');
 
 const router = express.Router();
 
-async function assertOwnership(docId, userId, res) {
+function validateBlockContent(content) {
+  if (content && typeof content === 'object') {
+    if (content.text && typeof content.text === 'string' && content.text.length > 50000) {
+      return 'Content text too long';
+    }
+    if (content.url && typeof content.url === 'string' && content.url.length > 2000) {
+      return 'Image URL too long';
+    }
+  }
+  return null;
+}
+
+
+async function assertOwnership(docId, userId) {
   const result = await db.query(
     'SELECT user_id FROM documents WHERE id = $1', [docId]
   );
   if (!result.rows[0]) {
-    res.status(404).json({ error: 'Not found' });
-    return false;
+    const err = new Error('Document not found');
+    err.status = 404;
+    throw err;
   }
   if (result.rows[0].user_id !== userId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return false;
+    const err = new Error('Forbidden');
+    err.status = 403;
+    throw err;
   }
-  return true;
 }
 
 // Global router for share
@@ -34,7 +48,7 @@ shareRouter.get('/:token', shareTokenMiddleware, async (req, res) => {
     res.json({ document, blocks: blocksResult.rows });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   }
 });
 
@@ -51,7 +65,7 @@ router.get('/', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   }
 });
 
@@ -74,14 +88,13 @@ router.post('/', async (req, res) => {
   } catch (err) {
     await db.query('ROLLBACK');
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   }
 });
 
 router.get('/:id', async (req, res) => {
   try {
-    const isOwner = await assertOwnership(req.params.id, req.user.id, res);
-    if (!isOwner) return;
+    await assertOwnership(req.params.id, req.user.id);
 
     const docResult = await db.query('SELECT * FROM documents WHERE id = $1', [req.params.id]);
     const document = docResult.rows[0];
@@ -94,78 +107,88 @@ router.get('/:id', async (req, res) => {
     res.json({ document, blocks: blocksResult.rows });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   }
 });
 
 router.patch('/:id', async (req, res) => {
   try {
-    const isOwner = await assertOwnership(req.params.id, req.user.id, res);
-    if (!isOwner) return;
+    await assertOwnership(req.params.id, req.user.id);
 
     const { title, is_public, blocks } = req.body;
-    let updates = [];
-    let values = [];
-    let idx = 1;
 
-    if (title !== undefined) {
-      updates.push(`title = $${idx++}`);
-      values.push(title);
-    }
-    if (is_public !== undefined) {
-      updates.push(`is_public = $${idx++}`);
-      values.push(is_public);
-    }
-
-    if (updates.length > 0) {
-      values.push(req.params.id);
-      await db.query(
-        `UPDATE documents SET ${updates.join(', ')} WHERE id = $${idx}`,
-        values
-      );
-    }
-
-    // Auto-Save block updates
-    if (blocks && Array.isArray(blocks)) {
-      // Begin transaction for bulk patching
+    try {
       await db.query('BEGIN');
-      for (const b of blocks) {
-        // We only save content, type, order_index; POST/DELETE handle creation/removal
+
+      let updates = [];
+      let values = [];
+      let idx = 1;
+
+      if (title !== undefined) {
+        updates.push(`title = $${idx++}`);
+        values.push(title);
+      }
+      if (is_public !== undefined) {
+        updates.push(`is_public = $${idx++}`);
+        values.push(is_public);
+      }
+
+      if (updates.length > 0) {
+        values.push(req.params.id);
         await db.query(
-          'UPDATE blocks SET content = $1, type = $2, order_index = $3 WHERE id = $4 AND document_id = $5',
-          [b.content, b.type, b.order_index, b.id, req.params.id]
+          `UPDATE documents SET ${updates.join(', ')} WHERE id = $${idx}`,
+          values
         );
       }
-      await db.query('UPDATE documents SET updated_at = NOW() WHERE id = $1', [req.params.id]);
-      await db.query('COMMIT');
-    }
 
-    const docResult = await db.query('SELECT * FROM documents WHERE id = $1', [req.params.id]);
-    res.json(docResult.rows[0]);
+      // Auto-Save block updates
+      if (blocks && Array.isArray(blocks)) {
+        for (const b of blocks) {
+          const error = validateBlockContent(b.content);
+          if (error) {
+            await db.query('ROLLBACK');
+            return res.status(422).json({ error: `Block ${b.id}: ${error}` });
+          }
+        }
+
+        for (const b of blocks) {
+          await db.query(
+            'UPDATE blocks SET content = $1, type = $2, order_index = $3 WHERE id = $4 AND document_id = $5',
+            [b.content, b.type, b.order_index, b.id, req.params.id]
+          );
+        }
+        await db.query('UPDATE documents SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+      }
+
+      await db.query('COMMIT');
+      
+      const docResult = await db.query('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+      res.json(docResult.rows[0]);
+    } catch (err) {
+      await db.query('ROLLBACK');
+      throw err; // Caught by the global error handler
+    }
   } catch (err) {
-    await db.query('ROLLBACK');
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   }
 });
 
 router.delete('/:id', async (req, res) => {
   try {
-    const isOwner = await assertOwnership(req.params.id, req.user.id, res);
-    if (!isOwner) return;
+    await assertOwnership(req.params.id, req.user.id);
 
     await db.query('DELETE FROM documents WHERE id = $1', [req.params.id]);
     res.status(204).send();
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   }
 });
 
 router.post('/:id/share', async (req, res) => {
   try {
-    const isOwner = await assertOwnership(req.params.id, req.user.id, res);
-    if (!isOwner) return;
+    await assertOwnership(req.params.id, req.user.id);
 
     const shareToken = crypto.randomBytes(16).toString('hex');
     await db.query(
@@ -176,14 +199,13 @@ router.post('/:id/share', async (req, res) => {
     res.json({ shareUrl: '/share/' + shareToken });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   }
 });
 
 router.delete('/:id/share', async (req, res) => {
   try {
-    const isOwner = await assertOwnership(req.params.id, req.user.id, res);
-    if (!isOwner) return;
+    await assertOwnership(req.params.id, req.user.id);
 
     await db.query(
       'UPDATE documents SET share_token = NULL, is_public = false WHERE id = $1',
@@ -193,7 +215,7 @@ router.delete('/:id/share', async (req, res) => {
     res.status(204).send();
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   }
 });
 

@@ -6,9 +6,26 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import SharedView from './pages/SharedView';
 
+import { jwtDecode } from 'jwt-decode';
+
 function PrivateRoute({ children }) {
   const token = localStorage.getItem('accessToken');
-  return token ? children : <Navigate to="/login" />;
+  
+  if (!token) return <Navigate to="/login" />;
+
+  try {
+    const decoded = jwtDecode(token);
+    const isExpired = decoded.exp * 1000 < Date.now();
+    if (isExpired) {
+      localStorage.removeItem('accessToken');
+      return <Navigate to="/login" />;
+    }
+  } catch (e) {
+    localStorage.removeItem('accessToken');
+    return <Navigate to="/login" />;
+  }
+
+  return children;
 }
 
 function App() {

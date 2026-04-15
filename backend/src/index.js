@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
+
 
 const authRouter = require('./routes/auth');
 const { documentsRouter, shareRouter } = require('./routes/document');
@@ -32,7 +34,16 @@ app.get('/health', (req, res) => {
   res.json({ ok: true });
 });
 
-app.use('/api/auth', authRouter);
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit each IP to 20 requests per `window` (here, per 15 minutes)
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: { error: 'Too many requests, please try again after 15 minutes' }
+});
+
+app.use('/api/auth', authLimiter, authRouter);
+
 app.use('/api/documents', documentsRouter);
 app.use('/api/share', shareRouter);
 app.use('/api/blocks', blocksRouter);

@@ -29,6 +29,7 @@ export default function DragHandle({ id }) {
       style={style} 
       {...listeners} 
       {...attributes}
+      aria-label="Drag to reorder"
       onMouseDown={e => {
         // Prevent default to prevent focus shift
         // e.preventDefault(); 

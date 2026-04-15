@@ -15,6 +15,16 @@ const poolConfig = process.env.DATABASE_URL
 
 const pool = new Pool(poolConfig);
 
+// Test connection on startup
+pool.query('SELECT NOW()', (err) => {
+  if (err) {
+    console.error('Database connection failed:', err.stack);
+    process.exit(1);
+  } else {
+    console.log('Database connected successfully');
+  }
+});
+
 module.exports = {
   query: (text, params) => pool.query(text, params),
   pool,

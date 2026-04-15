@@ -47,12 +47,6 @@ export default function Block({
     onUpdate(id, { text: e.target.innerText });
   };
 
-  const handleImageKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (imageUrl) onUpdate(id, { url: imageUrl });
-    }
-  };
 
   const toggleTodo = () => {
     if (readOnly) return;
@@ -117,12 +111,34 @@ export default function Block({
                onFocus={() => onFocus(id)}
                onKeyDown={(e) => { if (e.key === 'Backspace' || e.key === 'Delete') onKeyDown(e, id); }}>
             {content.url ? (
-              <img 
-                src={content.url} 
-                alt="Block content" 
-                style={{ maxWidth: '100%', borderRadius: 'var(--radius-md)' }} 
-                onClick={() => { if (!readOnly) onUpdate(id, { url: '' }); }}
-              />
+              <div style={{ position: 'relative' }}>
+                <img 
+                  src={content.url} 
+                  alt="Block content" 
+                  style={{ maxWidth: '100%', borderRadius: 'var(--radius-md)', display: 'block' }} 
+                  onClick={() => { if (!readOnly) onUpdate(id, { url: '' }); }}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+                <div style={{ 
+                  display: 'none', 
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '40px',
+                  background: 'var(--bg-overlay)',
+                  border: '1px dashed var(--border-default)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer'
+                }} onClick={() => { if (!readOnly) onUpdate(id, { url: '' }); }}>
+                  <span style={{ fontSize: '24px' }}>⚠️</span>
+                  <p>Image failed to load</p>
+                  <p style={{ fontSize: '0.8rem' }}>Click to edit URL</p>
+                </div>
+              </div>
             ) : (
               <div style={{
                 background: 'var(--bg-overlay)', padding: '24px', borderRadius: 'var(--radius-md)',
@@ -135,8 +151,17 @@ export default function Block({
                   placeholder="Paste image URL and press Enter"
                   value={imageUrl}
                   onChange={e => setImageUrl(e.target.value)}
-                  onKeyDown={handleImageKeyDown}
-                  onBlur={() => imageUrl && onUpdate(id, { url: imageUrl })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                       e.preventDefault();
+                       const isValid = imageUrl.startsWith('http') || imageUrl.startsWith('/');
+                       if (isValid) onUpdate(id, { url: imageUrl });
+                    }
+                  }}
+                  onBlur={() => {
+                    const isValid = imageUrl.startsWith('http') || imageUrl.startsWith('/');
+                    if (isValid) onUpdate(id, { url: imageUrl });
+                  }}
                   disabled={readOnly}
                   style={{
                     background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
@@ -185,14 +210,6 @@ export default function Block({
         )}
       </div>
 
-      <style>{`
-        .block-content:empty::before {
-          content: attr(data-placeholder);
-          color: var(--text-muted);
-          pointer-events: none;
-          display: block; /* For Firefox */
-        }
-      `}</style>
     </div>
   );
 }

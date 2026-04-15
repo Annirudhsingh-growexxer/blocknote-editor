@@ -75,6 +75,11 @@ export function useAutoSave(documentId, blocks) {
       return;
     }
 
+    // Guard against saving initial empty state if it's just a transition
+    if (blocks.length === 0 && lastSnapshotRef.current !== '[]') {
+      return;
+    }
+
     if (snapshot === lastSnapshotRef.current) {
       return;
     }

@@ -6,6 +6,7 @@ import Editor from './Editor';
 export default function Dashboard() {
   const [documents, setDocuments] = useState([]);
   const [activeDocId, setActiveDocId] = useState(() => localStorage.getItem('activeDocumentId'));
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchDocuments();
@@ -21,6 +22,7 @@ export default function Dashboard() {
 
   const fetchDocuments = async () => {
     try {
+      setLoading(true);
       const { data } = await api.get('/api/documents');
       setDocuments(data);
       setActiveDocId((current) => {
@@ -31,6 +33,8 @@ export default function Dashboard() {
       });
     } catch (err) {
       console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -45,10 +49,9 @@ export default function Dashboard() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this document?')) return;
     try {
       await api.delete(`/api/documents/${id}`);
-      setDocuments(documents.filter(d => d.id !== id));
+      setDocuments(prev => prev.filter(d => d.id !== id));
       if (activeDocId === id) setActiveDocId(null);
     } catch (err) {
       console.error(err);
@@ -63,6 +66,7 @@ export default function Dashboard() {
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-base)' }}>
       <Sidebar 
         documents={documents} 
+        loading={loading}
         onCreate={handleCreate} 
         activeDocId={activeDocId} 
         onSelect={setActiveDocId} 

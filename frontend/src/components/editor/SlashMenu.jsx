@@ -69,7 +69,7 @@ export default function SlashMenu({ position, filter, onSelect, onClose }) {
 
   return (
     <div ref={menuRef} style={{
-      position: 'absolute',
+      position: 'fixed',
       left: position.x + 'px',
       top: position.y + 'px',
       background: 'var(--bg-elevated)',
@@ -107,12 +107,6 @@ export default function SlashMenu({ position, filter, onSelect, onClose }) {
           <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{item.shortcut}</div>
         </div>
       ))}
-      <style>{`
-        @keyframes menuIn {
-          from { opacity: 0; transform: scale(0.96); }
-          to { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
     </div>
   );
 }

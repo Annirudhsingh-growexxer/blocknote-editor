@@ -16,6 +16,7 @@ export default function Login() {
     try {
       const { data } = await api.post('/api/auth/login', { email, password });
       localStorage.setItem('accessToken', data.accessToken);
+      localStorage.removeItem('activeDocumentId');
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
