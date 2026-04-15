@@ -10,6 +10,9 @@ const { documentsRouter, shareRouter } = require('./routes/document');
 const blocksRouter = require('./routes/block');
 
 const app = express();
+// When running behind a proxy/load-balancer that sets `X-Forwarded-For`,
+// enable `trust proxy` so express-rate-limit can identify clients correctly.
+app.set('trust proxy', true);
 
 app.set('trust proxy', true);
 
