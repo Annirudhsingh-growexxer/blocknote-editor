@@ -12,7 +12,7 @@ const blocksRouter = require('./routes/block');
 const app = express();
 
 // Allow multiple local dev origins and any origins provided via FRONTEND_URL (comma-separated).
-const defaultLocalOrigins = ['http://localhost:5173', 'http://localhost:5174'];
+const defaultLocalOrigins = ['http://localhost:5173', 'http://localhost:5174','https://blocknote-editor-peach.vercel.app'];
 const envOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map(s => s.trim()) : [];
 const allowedOrigins = [...new Set([...envOrigins, ...defaultLocalOrigins])];
 
