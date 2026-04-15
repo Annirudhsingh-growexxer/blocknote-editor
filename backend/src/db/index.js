@@ -4,7 +4,7 @@ const { Pool } = require('pg');
 // environment variables (DB_USER, DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT).
 // This makes it easier to configure local development (and to use SQLTools).
 const poolConfig = process.env.DATABASE_URL
-  ? { connectionString: process.env.DATABASE_URL }
+  ? { connectionString: process.env.DATABASE_URL , ssl: { rejectUnauthorized: false } }
   : {
       user: process.env.DB_USER || process.env.PGUSER || 'postgres',
       host: process.env.DB_HOST || process.env.PGHOST || 'localhost',
