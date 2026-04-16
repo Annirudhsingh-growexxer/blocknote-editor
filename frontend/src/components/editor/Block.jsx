@@ -31,7 +31,7 @@ const HIGHLIGHT_COLORS = [
 
 function Block({ 
   block, readOnly, onUpdate, onKeyDown, onPaste, onTypeChange, onImageSet,
-  focused, selected, slashActive, onFocus, onBlur 
+  focused, selected, slashActive, onFocus, onBlur, showUnfocusedPlaceholder
 }) {
   const setImage = onImageSet || ((id, url) => onUpdate(id, { url }));
   const contentRef = useRef(null);
@@ -141,7 +141,10 @@ function Block({
         type === 'heading_1' ? 'Heading 1' :
         type === 'heading_2' ? 'Heading 2' : ''
       )
-    : '';
+    // Only show the unfocused hint on fresh single-block documents (controlled
+    // by BlockEditor via showUnfocusedPlaceholder). Never show it on every
+    // empty line in a multi-block document — that looks cluttered.
+    : (showUnfocusedPlaceholder ? 'Click here to start writing…' : '');
 
   return (
     <div 

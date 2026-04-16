@@ -7,26 +7,27 @@ import FormatToolbar, { selectionIsInEditor } from './FormatToolbar';
 import { insertAfter, needsRenormalization } from '../../lib/orderIndex';
 import api from '../../lib/api';
 
-export default function BlockEditor({ documentId, initialBlocks, onChange, readOnly, hydrateNonce = 0, onDocumentTouched }) {
+export default function BlockEditor({ documentId, initialBlocks, onChange, readOnly, hydrateNonce = 0, onDocumentTouched, onTimestampBump }) {
   const [blocks, setBlocks] = useState([]);
   const [focusedId, setFocusedId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const selectionAnchorRef = useRef(null);
 
-  // After every block-level mutation the backend touches documents.updated_at
-  // and echoes the new timestamp back as `document_updated_at`. We forward it
-  // to the parent so useAutoSave's latestUpdatedAtRef stays fresh — otherwise
-  // the next autosave PATCH /documents sends a stale lastKnownUpdatedAt and
-  // the server responds 409 Conflict.
   const onDocumentTouchedRef = useRef(onDocumentTouched);
   useEffect(() => { onDocumentTouchedRef.current = onDocumentTouched; }, [onDocumentTouched]);
+  const onTimestampBumpRef = useRef(onTimestampBump);
+  useEffect(() => { onTimestampBumpRef.current = onTimestampBump; }, [onTimestampBump]);
+
   const maybeTouchDoc = useCallback((data) => {
     const ts = data && (data.document_updated_at || data.documentUpdatedAt);
-    if (!ts || !onDocumentTouchedRef.current) return;
-    // reorder returns an object keyed by doc-id; editor only owns one doc
-    // so take the first string timestamp we can find.
+    if (!ts) return;
     const flat = typeof ts === 'string' ? ts : Object.values(ts).find((v) => typeof v === 'string');
-    if (flat) onDocumentTouchedRef.current({ updated_at: flat });
+    if (!flat) return;
+    // Update the autosave ref IMMEDIATELY (synchronous, no React cycle)
+    // so the next debounced PATCH sees the fresh timestamp and avoids 409.
+    onTimestampBumpRef.current?.(flat);
+    // Also update the React doc state so the UI and conflict reset logic stay in sync.
+    onDocumentTouchedRef.current?.({ updated_at: flat });
   }, []);
   
   // Slash menu state
@@ -90,10 +91,17 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     focusBlock(blocksRef.current[0].id, 'start');
   }, [documentId, readOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Guard: only one structural mutation (delete, create, paste) at a time.
+  // Prevents double-delete 404s when rapid keystrokes race.
+  const isMutatingRef = useRef(false);
+
   const updateBlocksState = (newBlocks) => {
     setBlocks(newBlocks);
     blocksRef.current = newBlocks;
-    onChange(newBlocks);
+    // Don't propagate optimistic placeholder blocks to autosave — they don't
+    // have real DB IDs yet. Once confirmed they'll replace them.
+    const realBlocks = newBlocks.filter(b => !b._isOptimistic);
+    if (realBlocks.length > 0 || newBlocks.length === 0) onChange(realBlocks.length ? realBlocks : newBlocks);
   };
 
   const syncBlockMutation = (id, content) => {
@@ -267,14 +275,13 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       return;
     }
 
-    // Handle first line: insert lines[0] at cursor position using Range API
-    // so existing formatting is preserved and the cursor stays correct.
+    // ── Multi-line paste — optimistic render ───────────────────────────────
+    // Insert the first pasted line into the current block immediately via DOM.
     const el = e.target;
     const offset = getCursorOffset(el);
     const rawText = el.innerText || '';
     const textAfter = rawText.slice(offset);
 
-    // Replace selection (if any) with first pasted line
     const sel = window.getSelection();
     if (sel && sel.rangeCount && lines[0]) {
       const range = sel.getRangeAt(0);
@@ -286,10 +293,9 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       sel.removeAllRanges();
       sel.addRange(range);
       el.dispatchEvent(new InputEvent('input', { bubbles: true }));
-
     }
 
-    // Insert subsequent lines using a single bulk API call for smoother pastes.
+    // Build block payloads for lines 2…N
     const nextBlock = blocksRef.current[blockIndex + 1];
     const insertionUpperBound = nextBlock ? nextBlock.order_index : currentBlock.order_index + 2;
     const blocksPayload = [];
@@ -299,37 +305,77 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       const isLastContent = i === lines.length - 1;
       const nextOrder = insertAfter(previousOrder, insertionUpperBound);
       blocksPayload.push({
-        type: currentBlock.type === 'todo' ? 'todo' : 'paragraph',
+        // Paste into a todo block keeps the todo type for every new line,
+        // but always produces plain paragraphs when pasting into text blocks.
+        type: 'paragraph',
         content: { text: `${lines[i]}${isLastContent ? textAfter : ''}` },
         order_index: nextOrder,
       });
       previousOrder = nextOrder;
     }
 
+    // ── Optimistic insert: show blocks immediately without waiting for API ──
+    const optimisticBlocks = blocksPayload.map((b, i) => ({
+      ...b,
+      id: `optimistic-${Date.now()}-${i}`,
+      document_id: documentId,
+      _isOptimistic: true,
+      _optIdx: i,
+      created_at: new Date().toISOString(),
+    }));
+
+    const withOptimistic = [...blocksRef.current];
+    withOptimistic.splice(blockIndex + 1, 0, ...optimisticBlocks);
+    // Use setBlocks/blocksRef directly — do NOT call onChange yet (temp IDs).
+    blocksRef.current = withOptimistic;
+    setBlocks([...withOptimistic]);
+
+    // Focus the last optimistic block so the user can keep typing.
+    const lastOptimistic = optimisticBlocks[optimisticBlocks.length - 1];
+    if (lastOptimistic) {
+      setFocusedId(lastOptimistic.id);
+      focusBlock(lastOptimistic.id, 'end');
+    }
+
+    // ── Confirm with backend in background ────────────────────────────────
     try {
       const { data: bulkResponse } = await api.post('/api/blocks/bulk', {
         document_id: documentId,
         blocks: blocksPayload,
       });
       maybeTouchDoc(bulkResponse);
-      // Backend now returns { blocks, document_updated_at } but older callers
-      // may still get a raw array during rollout — support both.
       const insertedBlocks = Array.isArray(bulkResponse)
         ? bulkResponse
         : (bulkResponse?.blocks || []);
 
-      const newBlocks = [...blocksRef.current];
-      newBlocks.splice(blockIndex + 1, 0, ...insertedBlocks);
-      updateBlocksState(newBlocks);
+      // Replace optimistic blocks with confirmed blocks.
+      // Preserve any user edits that happened while the request was in flight.
+      const confirmed = blocksRef.current.map(b => {
+        if (!b._isOptimistic) return b;
+        const real = insertedBlocks[b._optIdx];
+        if (!real) return null;
+        // If the user typed into this block while waiting, keep their text.
+        const domEl = document.querySelector(`.block-wrapper[data-id="${b.id}"] .block-content`);
+        const liveText = domEl ? (domEl.innerText || '') : null;
+        return { ...real, content: liveText !== null ? { ...real.content, text: liveText } : real.content };
+      }).filter(Boolean);
 
-      const lastInsertedBlock = insertedBlocks[insertedBlocks.length - 1];
-      if (lastInsertedBlock) {
-        setFocusedId(lastInsertedBlock.id);
-        // Place cursor at END of the last pasted line (Notion behaviour).
-        focusBlock(lastInsertedBlock.id, 'end');
+      blocksRef.current = confirmed;
+      setBlocks([...confirmed]);
+      onChange(confirmed);
+
+      const lastConfirmed = insertedBlocks[insertedBlocks.length - 1];
+      if (lastConfirmed) {
+        setFocusedId(lastConfirmed.id);
+        focusBlock(lastConfirmed.id, 'end');
       }
     } catch (err) {
       console.error('Failed to paste multi-line content:', err);
+      // Roll back: remove optimistic blocks.
+      const rolledBack = blocksRef.current.filter(b => !b._isOptimistic);
+      blocksRef.current = rolledBack;
+      setBlocks([...rolledBack]);
+      onChange(rolledBack);
     }
   };
 
@@ -554,16 +600,19 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
          });
          maybeTouchDoc(newBlock);
 
-         // Update DOM and state together after the new block is ready
+         // Update DOM and state together after the new block is ready.
          el.innerText = textBefore;
+         // syncBlockMutation records textBefore in blocksRef so the autosave
+         // PATCH (sent 1 second later) includes the correct content for this
+         // block. A separate api.patch here is NOT needed and was the root
+         // cause of 409 Conflict: it bumped documents.updated_at to T3 while
+         // autosave was already in-flight with lastKnownUpdatedAt = T2.
          syncBlockMutation(blockId, { text: textBefore });
-         api.patch(`/api/blocks/${blockId}`, {
-           content: { ...currentBlock.content, text: textBefore }
-         }).then(({ data }) => maybeTouchDoc(data)).catch(console.error);
 
          const newBlocks = [...blocksRef.current];
          newBlocks.splice(blockIndex + 1, 0, newBlock);
          updateBlocksState(newBlocks);
+
 
          setFocusedId(newBlock.id);
          focusBlock(newBlock.id, 'start');
@@ -600,6 +649,8 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
            .reverse()
            .find((block) => block.type !== 'divider' && block.type !== 'image');
 
+         if (isMutatingRef.current) return;
+         isMutatingRef.current = true;
          try {
             const { data: deletedResp } = await api.delete(`/api/blocks/${blockId}`);
             maybeTouchDoc(deletedResp);
@@ -614,6 +665,7 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
               focusBlock(previousEditableBlock.id, 'end');
             }
          } catch (e) {}
+         finally { isMutatingRef.current = false; }
        }
        return;
     }
@@ -894,29 +946,40 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     >
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
-          {blocks.map(block => (
-            <div
-              key={block.id}
-              className="block-wrapper"
-              data-id={block.id}
-              onMouseDown={(e) => handleBlockPointerDown(e, block.id)}
-            >
-              <Block 
-                block={block}
-                readOnly={readOnly}
-                focused={focusedId === block.id}
-                selected={selectedIds.has(block.id)}
-                slashActive={slashState.isOpen && slashState.blockId === block.id}
-                onFocus={handleBlockFocus}
-                onBlur={handleBlockBlur}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                onTypeChange={handleTypeChange}
-                onUpdate={syncBlockMutation}
-                onImageSet={handleImageUrlSet}
-              />
-            </div>
-          ))}
+          {blocks.map((block, blockIdx) => {
+            // Show the unfocused 'click to write' hint ONLY on the first block
+            // of a document that has just one empty block — acting as a welcome
+            // prompt. On multi-block documents, showing it on every empty line
+            // looks cluttered and distracting.
+            const isOnlyEmptyBlock =
+              blocks.length === 1 &&
+              (!block.content?.text || block.content.text.trim() === '') &&
+              block.type === 'paragraph';
+            return (
+              <div
+                key={block.id}
+                className="block-wrapper"
+                data-id={block.id}
+                onMouseDown={(e) => handleBlockPointerDown(e, block.id)}
+              >
+                <Block 
+                  block={block}
+                  readOnly={readOnly}
+                  focused={focusedId === block.id}
+                  selected={selectedIds.has(block.id)}
+                  slashActive={slashState.isOpen && slashState.blockId === block.id}
+                  onFocus={handleBlockFocus}
+                  onBlur={handleBlockBlur}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  onTypeChange={handleTypeChange}
+                  onUpdate={syncBlockMutation}
+                  onImageSet={handleImageUrlSet}
+                  showUnfocusedPlaceholder={isOnlyEmptyBlock}
+                />
+              </div>
+            );
+          })}
         </SortableContext>
       </DndContext>
 

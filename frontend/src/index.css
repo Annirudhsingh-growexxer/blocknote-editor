@@ -77,11 +77,19 @@ input {
   outline: none;
 }
 
+/* Placeholder shown when block has no content */
 .block-content:empty::before {
   content: attr(data-placeholder);
   color: var(--text-muted);
   pointer-events: none;
   display: block; /* For Firefox */
+}
+
+/* Unfocused empty placeholder: slightly brighter so first-time users
+   can immediately spot where to start typing. */
+.block-content:not(:focus):empty::before {
+  color: var(--text-secondary);
+  opacity: 0.55;
 }
 
 @keyframes menuIn {

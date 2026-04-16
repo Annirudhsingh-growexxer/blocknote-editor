@@ -157,22 +157,34 @@ router.post('/bulk', async (req, res) => {
 
     await db.query('BEGIN');
     transactionStarted = true;
-    const inserted = [];
+
+    // Build a single multi-row INSERT for all blocks \u2014 one DB round-trip
+    // instead of N sequential INSERTs, which is significantly faster for
+    // large pastes (50+ lines).
+    const valueSets = [];
+    const params = [];
+    let p = 1;
 
     for (const block of blocks) {
       const blockType = block.type || 'paragraph';
-      const result = await db.query(
-        'INSERT INTO blocks (document_id, type, content, order_index, parent_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        [
-          document_id,
-          blockType,
-          block.content || {},
-          block.order_index,
-          block.parent_id || null,
-        ]
+      params.push(
+        document_id,
+        blockType,
+        block.content || {},
+        block.order_index,
+        block.parent_id || null,
       );
-      inserted.push(result.rows[0]);
+      valueSets.push(`($${p++}, $${p++}, $${p++}, $${p++}, $${p++})`);
     }
+
+    const result = await db.query(
+      `INSERT INTO blocks (document_id, type, content, order_index, parent_id)
+       VALUES ${valueSets.join(', ')}
+       RETURNING *`,
+      params
+    );
+    // Preserve original insertion order (Postgres RETURNING doesn't guarantee it).
+    const inserted = result.rows.sort((a, b) => a.order_index - b.order_index);
 
     const documentUpdatedAt = await touchDocument(document_id);
     await db.query('COMMIT');
@@ -187,6 +199,7 @@ router.post('/bulk', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 router.patch('/reorder', async (req, res) => {
   let transactionStarted = false;
