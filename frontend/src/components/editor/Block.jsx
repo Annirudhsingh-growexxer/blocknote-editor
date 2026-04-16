@@ -3,6 +3,26 @@ import DragHandle from './DragHandle';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+const TEXT_COLORS = [
+  { label: 'Default', value: '#f0ede8' },
+  { label: 'Red',     value: '#e05c5c' },
+  { label: 'Orange',  value: '#e8943a' },
+  { label: 'Yellow',  value: '#e8c547' },
+  { label: 'Green',   value: '#4caf7d' },
+  { label: 'Blue',    value: '#5c9ee0' },
+  { label: 'Purple',  value: '#a07de8' },
+  { label: 'Muted',   value: '#999999' },
+];
+
+const HIGHLIGHT_COLORS = [
+  { label: 'None',   value: null },
+  { label: 'Yellow', value: '#e8c54740' },
+  { label: 'Green',  value: '#4caf7d40' },
+  { label: 'Blue',   value: '#5c9ee040' },
+  { label: 'Red',    value: '#e05c5c40' },
+  { label: 'Purple', value: '#a07de840' },
+];
+
 function Block({ 
   block, readOnly, onUpdate, onKeyDown, onPaste, onTypeChange, onImageSet, 
   focused, selected, slashActive, onFocus, onBlur 
@@ -11,6 +31,37 @@ function Block({
   const { id, type, content } = block;
   const [isHovered, setIsHovered] = useState(false);
   const [imageUrl, setImageUrl] = useState(content.url || '');
+  const [formatMenu, setFormatMenu] = useState(false); // open/close block format menu
+  const [activeTab, setActiveTab] = useState('text');
+  const formatBtnRef = useRef(null);
+  const formatMenuRef = useRef(null);
+
+  // Close format menu on outside click
+  useEffect(() => {
+    if (!formatMenu) return;
+    const handler = (e) => {
+      if (!formatMenuRef.current?.contains(e.target) && !formatBtnRef.current?.contains(e.target)) {
+        setFormatMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [formatMenu]);
+
+  const applyBlockFormat = (command, value) => {
+    const el = contentRef.current;
+    if (!el) return;
+    // Select all content in the block
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand(command, false, value);
+    sel.removeAllRanges();
+    el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+  };
 
   const {
     attributes,
@@ -66,12 +117,92 @@ function Block({
         ...dndStyle,
         padding: '3px 0 3px 32px',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        position: 'relative',
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {!readOnly && isHovered && <DragHandle id={id} />}
+      {!readOnly && (focused || isHovered) && type !== 'divider' && type !== 'image' && (
+        <div style={{ position: 'absolute', left: '-4px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}>
+          <button
+            ref={formatBtnRef}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFormatMenu((v) => !v); setActiveTab('text'); }}
+            title="Format block"
+            style={{
+              width: '18px', height: '18px', borderRadius: '50%',
+              background: formatMenu ? 'var(--accent)' : 'var(--bg-overlay)',
+              border: '1px solid var(--border-default)',
+              color: formatMenu ? 'var(--text-inverse)' : 'var(--text-muted)',
+              fontSize: '14px', lineHeight: 1, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', cursor: 'pointer',
+            }}
+          >+</button>
+
+          {formatMenu && (
+            <div
+              ref={formatMenuRef}
+              onMouseDown={(e) => e.preventDefault()}
+              style={{
+                position: 'absolute', left: '24px', top: '0',
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                zIndex: 200, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '6px',
+                animation: 'menuIn 120ms var(--ease-snap)',
+              }}
+            >
+              {/* Tabs */}
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {['text', 'highlight'].map((tab) => (
+                  <button
+                    key={tab}
+                    onMouseDown={(e) => { e.preventDefault(); setActiveTab(tab); }}
+                    style={{
+                      flex: 1, padding: '3px 8px', fontSize: '0.7rem',
+                      fontFamily: 'var(--font-ui)', borderRadius: 'var(--radius-sm)',
+                      border: '1px solid',
+                      borderColor: activeTab === tab ? 'var(--accent)' : 'var(--border-subtle)',
+                      color: activeTab === tab ? 'var(--accent)' : 'var(--text-secondary)',
+                      background: 'transparent', cursor: 'pointer',
+                    }}
+                  >
+                    {tab === 'text' ? 'A Color' : 'Highlight'}
+                  </button>
+                ))}
+              </div>
+              {/* Swatches */}
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: '172px' }}>
+                {(activeTab === 'text' ? TEXT_COLORS : HIGHLIGHT_COLORS).map(({ label, value }) => (
+                  <button
+                    key={label}
+                    title={label}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (activeTab === 'text') applyBlockFormat('foreColor', value);
+                      else applyBlockFormat('hiliteColor', value ?? 'transparent');
+                      setFormatMenu(false);
+                    }}
+                    style={{
+                      width: '20px', height: '20px', borderRadius: '50%',
+                      border: '1px solid var(--border-default)',
+                      background: value ?? 'transparent',
+                      cursor: 'pointer', flexShrink: 0, position: 'relative',
+                    }}
+                  >
+                    {!value && (
+                      <span style={{
+                        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700,
+                      }}>∅</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{
           position: 'relative',
@@ -215,7 +346,8 @@ function Block({
             }}
             data-placeholder={placeholderText}
           />
-        )}
+        )
+        }
       </div>
 
     </div>

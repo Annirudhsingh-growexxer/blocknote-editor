@@ -15,14 +15,20 @@ export default function Editor({ documentId, onTitleChange, onToggleSidebar, sid
   const [editorNotice, setEditorNotice] = useState('');
   const titleRef = useRef(null);
   
+  const handleServerDocumentUpdate = useCallback((serverDoc) => {
+    setDoc((prev) => (prev ? { ...prev, updated_at: serverDoc.updated_at } : prev));
+  }, []);
+
+  const handleConflict = useCallback(() => {
+    setEditorNotice('This document changed in another tab. Reload to avoid overwriting newer edits.');
+  }, []);
+
   const { saveStatus, flushNow } = useAutoSave(
     documentId,
     blocks,
     doc?.updated_at,
-    (serverDoc) => setDoc((prev) => (prev ? { ...prev, updated_at: serverDoc.updated_at } : prev)),
-    () => {
-      setEditorNotice('This document changed in another tab. Reload to avoid overwriting newer edits.');
-    }
+    handleServerDocumentUpdate,
+    handleConflict
   );
 
   useEffect(() => {

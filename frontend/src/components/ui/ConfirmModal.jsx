@@ -1,7 +1,7 @@
 import React from 'react';
-import { X, CheckCircle, XCircle } from 'lucide-react';
+import { X, CheckCircle, XCircle, Loader } from 'lucide-react';
 
-// phase: 'confirm' | 'success' | 'error'
+// phase: 'confirm' | 'loading' | 'success' | 'error'
 export default function ConfirmModal({
   phase = 'confirm',
   title,
@@ -14,6 +14,7 @@ export default function ConfirmModal({
   onClose,
 }) {
   const isDone = phase === 'success' || phase === 'error';
+  const isLoading = phase === 'loading';
 
   return (
     <div style={{
@@ -64,23 +65,31 @@ export default function ConfirmModal({
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 onClick={onClose}
+                disabled={isLoading}
                 style={{
                   flex: 1, padding: '10px', background: 'var(--bg-surface)',
                   border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
-                  color: 'var(--text-primary)', fontWeight: 500
+                  color: isLoading ? 'var(--text-muted)' : 'var(--text-primary)', fontWeight: 500,
+                  opacity: isLoading ? 0.5 : 1
                 }}
               >
                 Cancel
               </button>
               <button
-                onClick={onConfirm}
+                onClick={!isLoading ? onConfirm : undefined}
+                disabled={isLoading}
                 style={{
                   flex: 1, padding: '10px', border: 'none',
                   borderRadius: 'var(--radius-md)', color: 'white', fontWeight: 500,
-                  background: 'var(--error)', ...confirmStyle
+                  background: 'var(--error)', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', gap: '8px', opacity: isLoading ? 0.8 : 1,
+                  ...confirmStyle
                 }}
               >
-                {confirmLabel}
+                {isLoading
+                  ? <><Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Deleting…</>
+                  : confirmLabel
+                }
               </button>
             </div>
           </>

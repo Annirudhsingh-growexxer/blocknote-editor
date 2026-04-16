@@ -3,6 +3,7 @@ import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import Block from './Block';
 import SlashMenu from './SlashMenu';
+import FormatToolbar from './FormatToolbar';
 import { insertAfter, needsRenormalization } from '../../lib/orderIndex';
 import api from '../../lib/api';
 
@@ -64,16 +65,16 @@ useEffect(() => {
 }, [documentId, blocks.length, readOnly]); // Observe blocks.length specifically
 
   const updateBlocksState = (newBlocks) => {
-     setBlocks(newBlocks);
-     blocksRef.current = newBlocks;
-     onChange(newBlocks);
+    setBlocks(newBlocks);
+    blocksRef.current = newBlocks;
+    onChange(newBlocks);
   };
 
   const syncBlockMutation = (id, content) => {
-    // Update local but do not trigger full react render sync if only text changed
-    // We update our ref and state so AutoSave catches it
     const newBlocks = blocksRef.current.map(b => b.id === id ? { ...b, content: { ...b.content, ...content } } : b);
-    updateBlocksState(newBlocks);
+    setBlocks(newBlocks);
+    blocksRef.current = newBlocks;
+    onChange(newBlocks);
   };
 
   const isPlainCharacterKey = (key) => key.length === 1 && !/\s/.test(key);
@@ -170,6 +171,27 @@ useEffect(() => {
     e.preventDefault();
 
     const normalizedText = plainText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // Code blocks: insert the full text as-is (preserve all newlines within the block)
+    if (currentBlock.type === 'code') {
+      const el = e.target;
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const textNode = document.createTextNode(normalizedText);
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.setEndAfter(textNode);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      } else {
+        insertPlainTextIntoBlock(el, blockId, normalizedText);
+      }
+      return;
+    }
+
     const lines = normalizedText.split('\n');
 
     if (lines.length <= 1) {
@@ -184,8 +206,7 @@ useEffect(() => {
     const textBefore = el.innerText.slice(0, offset);
     const textAfter = el.innerText.slice(offset);
     
-    const firstLine = lines[0];
-    const combinedFirstLine = textBefore + firstLine;
+    const combinedFirstLine = textBefore + lines[0];
     el.innerText = combinedFirstLine;
     syncBlockMutation(blockId, { text: combinedFirstLine });
 
@@ -199,7 +220,7 @@ useEffect(() => {
       const isLastContent = i === lines.length - 1;
       const nextOrder = insertAfter(previousOrder, insertionUpperBound);
       blocksPayload.push({
-        type: 'paragraph',
+        type: currentBlock.type === 'todo' ? 'todo' : 'paragraph',
         content: { text: `${lines[i]}${isLastContent ? textAfter : ''}` },
         order_index: nextOrder,
       });
@@ -276,6 +297,15 @@ useEffect(() => {
       const allIds = blocksRef.current.map((b) => b.id);
       setSelectedIds(new Set(allIds));
       selectionAnchorRef.current = allIds[0] || null;
+      return;
+    }
+
+    // Ctrl/Cmd+C -> copy selected blocks as plain text
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c' && selectedIds.size > 1) {
+      e.preventDefault();
+      const ordered = blocksRef.current.filter((b) => selectedIds.has(b.id));
+      const text = ordered.map((b) => b.content?.text ?? '').join('\n');
+      navigator.clipboard.writeText(text).catch(console.error);
       return;
     }
 
@@ -485,18 +515,18 @@ useEffect(() => {
     }
 
     if (e.key === 'Tab') {
-      if (currentBlock.type === 'code') {
-         e.preventDefault();
-         const sel = window.getSelection();
-         if (!sel.rangeCount) return;
-         const range = sel.getRangeAt(0);
-         range.deleteContents();
-         const textNode = document.createTextNode('  ');
-         range.insertNode(textNode);
-         range.collapse(false);
-         sel.removeAllRanges();
-         sel.addRange(range);
-      }
+      e.preventDefault();
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const textNode = document.createTextNode('    ');
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      el.dispatchEvent(new InputEvent('input', { bubbles: true }));
     }
   };
 
@@ -699,6 +729,8 @@ useEffect(() => {
           ))}
         </SortableContext>
       </DndContext>
+
+      <FormatToolbar />
 
       {slashState.isOpen && (
         <SlashMenu 

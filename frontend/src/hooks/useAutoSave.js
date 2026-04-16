@@ -104,6 +104,9 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
     latestUpdatedAtRef.current = lastKnownUpdatedAt;
   }, [documentId, blocks, lastKnownUpdatedAt]);
 
+  const persistBlocksRef = useRef(persistBlocks);
+  useEffect(() => { persistBlocksRef.current = persistBlocks; }, [persistBlocks]);
+
   useEffect(() => {
     if (!documentId || !blocks) return;
 
@@ -115,20 +118,16 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
       return;
     }
 
-    // Mark dirty on any edit. Avoid JSON-string diffs each keystroke.
     blocksVersionRef.current += 1;
-
     dirtyRef.current = true;
     setSaveStatus('saving');
 
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
     timeoutRef.current = setTimeout(() => {
-      void persistBlocks();
+      void persistBlocksRef.current();
     }, 1000);
-  }, [documentId, blocks, persistBlocks]);
+  }, [documentId, blocks]); // persistBlocks intentionally excluded — stored in ref above
 
   useEffect(() => {
     const flushPendingChanges = () => {

@@ -103,7 +103,7 @@ export default function Sidebar({ documents, loading, onCreate, activeDocId, onS
       </div>
 
       {deletingDoc && (
-        <ConfirmModal
+         <ConfirmModal
           phase={deletePhase}
           title="Delete Document"
           description={<>Are you sure you want to delete <strong style={{ color: 'var(--text-primary)' }}>{deletingDoc.title}</strong>? This action cannot be undone.</>}
@@ -111,6 +111,7 @@ export default function Sidebar({ documents, loading, onCreate, activeDocId, onS
           successMessage="Document deleted successfully."
           errorMessage="Failed to delete the document. Please try again."
           onConfirm={async () => {
+            setDeletePhase('loading');
             try {
               await onDelete(deletingDoc.id);
               setDeletePhase('success');
