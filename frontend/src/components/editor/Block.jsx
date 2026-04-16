@@ -2,6 +2,12 @@ import React, { useRef, useEffect, useState, useLayoutEffect, memo } from 'react
 import DragHandle from './DragHandle';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { sanitizeInlineHTML } from '../../lib/sanitizeInlineHTML';
+
+// `code` blocks are intentionally plain-text per the product spec
+// ("Monospace. No rich formatting."); everything else supports the
+// floating FormatToolbar, so we store their value as sanitized HTML.
+const RICH_TEXT_TYPES = new Set(['paragraph', 'heading_1', 'heading_2', 'todo']);
 
 function Block({ 
   block, readOnly, onUpdate, onKeyDown, onPaste, onTypeChange, onImageSet, 
@@ -30,10 +36,22 @@ function Block({
 
   useLayoutEffect(() => {
     if (!contentRef.current) return;
+    const el = contentRef.current;
     const nextText = content?.text || '';
-    const isFocused = document.activeElement === contentRef.current;
-    if (!isFocused && contentRef.current.innerText !== nextText) {
-      contentRef.current.innerText = nextText;
+    const isFocused = document.activeElement === el;
+    // Don't clobber the DOM while the user is actively editing it — the
+    // FormatToolbar mutates the DOM directly via execCommand and we must
+    // preserve those edits until React re-renders with synced state.
+    if (isFocused) return;
+
+    if (RICH_TEXT_TYPES.has(type)) {
+      const nextHTML = sanitizeInlineHTML(nextText);
+      if (el.innerHTML !== nextHTML) {
+        el.innerHTML = nextHTML;
+      }
+    } else if (el.innerText !== nextText) {
+      // `code` and any other plain-text type.
+      el.innerText = nextText;
     }
   }, [content?.text, type]);
 
@@ -42,7 +60,15 @@ function Block({
   }, [content.url]);
 
   const handleInput = (e) => {
-    onUpdate(id, { text: e.target.innerText });
+    // Store HTML for rich-text block types so inline formatting (<b>, <i>,
+    // <u>, <s>, <code>) survives round-trips through state. Plain `innerHTML`
+    // is passed up unsanitized here because the *rendering* site (the
+    // useLayoutEffect above and the read-only share view) always runs it
+    // back through sanitizeInlineHTML before inserting it into the DOM.
+    const payload = RICH_TEXT_TYPES.has(type)
+      ? { text: e.target.innerHTML }
+      : { text: e.target.innerText };
+    onUpdate(id, payload);
   };
 
 
