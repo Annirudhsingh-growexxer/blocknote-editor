@@ -776,8 +776,6 @@ useEffect(() => {
         </SortableContext>
       </DndContext>
 
-      <FormatToolbar />
-
       {slashState.isOpen && (
         <SlashMenu 
           position={slashState.position} 
