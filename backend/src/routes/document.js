@@ -7,15 +7,39 @@ const rejectSharedWrites = require('../middleware/rejectSharedWrites');
 
 const router = express.Router();
 
+const ALLOWED_BLOCK_TYPES = new Set([
+  'paragraph',
+  'heading_1',
+  'heading_2',
+  'todo',
+  'code',
+  'divider',
+  'image',
+]);
+
 function validateBlockContent(content) {
-  if (content && typeof content === 'object') {
-    if (content.text && typeof content.text === 'string' && content.text.length > 50000) {
-      return 'Content text too long';
-    }
-    if (content.url && typeof content.url === 'string' && content.url.length > 2000) {
-      return 'Image URL too long';
-    }
+  if (content === undefined || content === null) return null;
+  if (typeof content !== 'object' || Array.isArray(content)) return 'Invalid block content';
+
+  if ('text' in content) {
+    if (typeof content.text !== 'string') return 'Invalid block text';
+    if (content.text.length > 50000) return 'Content text too long';
   }
+
+  if ('url' in content) {
+    if (typeof content.url !== 'string') return 'Invalid image URL';
+    if (content.url.length > 2000) return 'Image URL too long';
+  }
+
+  if ('checked' in content) {
+    if (typeof content.checked !== 'boolean') return 'Invalid todo checked value';
+  }
+
+  return null;
+}
+
+function validateBlockType(type) {
+  if (!ALLOWED_BLOCK_TYPES.has(type)) return 'Invalid block type';
   return null;
 }
 
@@ -161,17 +185,39 @@ router.patch('/:id', async (req, res) => {
       // Auto-Save block updates
       if (blocks && Array.isArray(blocks)) {
         for (const b of blocks) {
+          if (!b || typeof b !== 'object') {
+            await db.query('ROLLBACK');
+            return res.status(422).json({ error: 'Invalid block payload' });
+          }
+
+          if (!b.id || typeof b.id !== 'string') {
+            await db.query('ROLLBACK');
+            return res.status(422).json({ error: 'Invalid block id' });
+          }
+
+          const blockType = b.type || 'paragraph';
+          const typeError = validateBlockType(blockType);
+          if (typeError) {
+            await db.query('ROLLBACK');
+            return res.status(422).json({ error: `Block ${b.id || 'unknown'}: ${typeError}` });
+          }
+
+          if (typeof b.order_index !== 'number' || !Number.isFinite(b.order_index)) {
+            await db.query('ROLLBACK');
+            return res.status(422).json({ error: `Block ${b.id || 'unknown'}: Invalid order_index` });
+          }
+
           const error = validateBlockContent(b.content);
           if (error) {
             await db.query('ROLLBACK');
-            return res.status(422).json({ error: `Block ${b.id}: ${error}` });
+            return res.status(422).json({ error: `Block ${b.id || 'unknown'}: ${error}` });
           }
         }
 
         for (const b of blocks) {
           await db.query(
             'UPDATE blocks SET content = $1, type = $2, order_index = $3 WHERE id = $4 AND document_id = $5',
-            [b.content, b.type, b.order_index, b.id, req.params.id]
+            [b.content, b.type || 'paragraph', b.order_index, b.id, req.params.id]
           );
         }
         await db.query('UPDATE documents SET updated_at = NOW() WHERE id = $1', [req.params.id]);

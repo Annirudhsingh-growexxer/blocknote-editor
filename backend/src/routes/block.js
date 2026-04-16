@@ -5,15 +5,39 @@ const rejectSharedWrites = require('../middleware/rejectSharedWrites');
 
 const router = express.Router();
 
+const ALLOWED_BLOCK_TYPES = new Set([
+  'paragraph',
+  'heading_1',
+  'heading_2',
+  'todo',
+  'code',
+  'divider',
+  'image',
+]);
+
 function validateBlockContent(content) {
-  if (content && typeof content === 'object') {
-    if (content.text && typeof content.text === 'string' && content.text.length > 50000) {
-      return 'Content text too long';
-    }
-    if (content.url && typeof content.url === 'string' && content.url.length > 2000) {
-      return 'Image URL too long';
-    }
+  if (content === undefined || content === null) return null;
+  if (typeof content !== 'object' || Array.isArray(content)) return 'Invalid block content';
+
+  if ('text' in content) {
+    if (typeof content.text !== 'string') return 'Invalid block text';
+    if (content.text.length > 50000) return 'Content text too long';
   }
+
+  if ('url' in content) {
+    if (typeof content.url !== 'string') return 'Invalid image URL';
+    if (content.url.length > 2000) return 'Image URL too long';
+  }
+
+  if ('checked' in content) {
+    if (typeof content.checked !== 'boolean') return 'Invalid todo checked value';
+  }
+
+  return null;
+}
+
+function validateBlockType(type) {
+  if (!ALLOWED_BLOCK_TYPES.has(type)) return 'Invalid block type';
   return null;
 }
 
@@ -54,7 +78,15 @@ async function touchDocument(documentId) {
 router.post('/', async (req, res) => {
   try {
     const { document_id, type, content, order_index, parent_id } = req.body;
-    
+
+    const blockType = type || 'paragraph';
+    const typeError = validateBlockType(blockType);
+    if (typeError) return res.status(422).json({ error: typeError });
+
+    if (typeof order_index !== 'number' || !Number.isFinite(order_index)) {
+      return res.status(422).json({ error: 'Invalid order_index' });
+    }
+
     const contentError = validateBlockContent(content);
     if (contentError) return res.status(422).json({ error: contentError });
     
@@ -63,7 +95,7 @@ router.post('/', async (req, res) => {
 
     const result = await db.query(
       'INSERT INTO blocks (document_id, type, content, order_index, parent_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [document_id, type || 'paragraph', content || {}, order_index, parent_id || null]
+      [document_id, blockType, content || {}, order_index, parent_id || null]
     );
 
     await touchDocument(document_id);
@@ -86,6 +118,14 @@ router.post('/bulk', async (req, res) => {
     if (!isOwner) return res.status(403).json({ error: 'Forbidden' });
 
     for (const block of blocks) {
+      const blockType = block?.type || 'paragraph';
+      const typeError = validateBlockType(blockType);
+      if (typeError) return res.status(422).json({ error: typeError });
+
+      if (typeof block?.order_index !== 'number' || !Number.isFinite(block.order_index)) {
+        return res.status(422).json({ error: 'Invalid order_index' });
+      }
+
       const contentError = validateBlockContent(block.content);
       if (contentError) return res.status(422).json({ error: contentError });
     }
@@ -94,11 +134,12 @@ router.post('/bulk', async (req, res) => {
     const inserted = [];
 
     for (const block of blocks) {
+      const blockType = block?.type || 'paragraph';
       const result = await db.query(
         'INSERT INTO blocks (document_id, type, content, order_index, parent_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
         [
           document_id,
-          block.type || 'paragraph',
+          blockType,
           block.content || {},
           block.order_index,
           block.parent_id || null,
@@ -122,6 +163,18 @@ router.patch('/reorder', async (req, res) => {
   try {
     const { updates } = req.body; // [{ id, order_index }]
     if (!updates || updates.length === 0) return res.json({ success: true });
+
+    for (const update of updates) {
+      if (!update || typeof update !== 'object') {
+        return res.status(422).json({ error: 'Invalid update payload' });
+      }
+      if (!update.id || typeof update.id !== 'string') {
+        return res.status(422).json({ error: 'Invalid block id' });
+      }
+      if (typeof update.order_index !== 'number' || !Number.isFinite(update.order_index)) {
+        return res.status(422).json({ error: 'Invalid order_index' });
+      }
+    }
 
     // Validate ownership of all blocks first
     const ids = updates.map(u => u.id);
@@ -188,7 +241,16 @@ router.patch('/:id', async (req, res) => {
     if (!blockData) return;
 
     const { type, content, order_index } = req.body;
-    
+
+    if (type !== undefined) {
+      const typeError = validateBlockType(type);
+      if (typeError) return res.status(422).json({ error: typeError });
+    }
+
+    if (order_index !== undefined && (typeof order_index !== 'number' || !Number.isFinite(order_index))) {
+      return res.status(422).json({ error: 'Invalid order_index' });
+    }
+
     const contentError = validateBlockContent(content);
     if (contentError) return res.status(422).json({ error: contentError });
 

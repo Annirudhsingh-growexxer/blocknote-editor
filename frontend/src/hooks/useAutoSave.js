@@ -11,6 +11,7 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
   const latestBlocksRef = useRef(blocks);
   const latestUpdatedAtRef = useRef(lastKnownUpdatedAt);
   const dirtyRef = useRef(false);
+  const conflictRef = useRef(false);
 
   const saveWithKeepalive = useCallback(async () => {
     if (!latestDocumentIdRef.current || !latestBlocksRef.current || !dirtyRef.current) return;
@@ -33,6 +34,11 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
 
   const persistBlocks = useCallback(async () => {
     if (!latestDocumentIdRef.current || !latestBlocksRef.current || !dirtyRef.current) return;
+    if (conflictRef.current) return;
+
+    // Snapshot guard: if blocks change while this request is in-flight,
+    // we must NOT clear dirtyRef on success.
+    const snapshotForRequest = lastSnapshotRef.current;
 
     if (abortRef.current) {
       abortRef.current.abort();
@@ -51,20 +57,29 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
         { signal: controller.signal }
       );
 
-      dirtyRef.current = false;
+      const shouldClearDirty = lastSnapshotRef.current === snapshotForRequest;
+
       if (data?.updated_at) {
         latestUpdatedAtRef.current = data.updated_at;
         onServerDocumentUpdate?.(data);
       }
-      setSaveStatus('saved');
-      setTimeout(() => {
-        setSaveStatus((current) => (current === 'saved' ? 'idle' : current));
-      }, 2000);
+
+      if (shouldClearDirty) {
+        dirtyRef.current = false;
+        setSaveStatus('saved');
+        setTimeout(() => {
+          setSaveStatus((current) => (current === 'saved' ? 'idle' : current));
+        }, 2000);
+      } else {
+        // Newer local changes arrived while this save was in-flight.
+        setSaveStatus('saving');
+      }
     } catch (err) {
       if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
         return;
       }
       if (err.response?.status === 409) {
+        conflictRef.current = true;
         setSaveStatus('error');
         onConflict?.(err.response?.data);
         return;
@@ -76,6 +91,15 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
   useEffect(() => {
     latestDocumentIdRef.current = documentId;
     latestBlocksRef.current = blocks;
+    // If we had a 409 conflict and the caller reloaded the document
+    // (updated_at changed), reset local autosave baseline.
+    if (conflictRef.current && lastKnownUpdatedAt) {
+      conflictRef.current = false;
+      lastSnapshotRef.current = JSON.stringify(blocks);
+      dirtyRef.current = false;
+      setSaveStatus('idle');
+    }
+
     latestUpdatedAtRef.current = lastKnownUpdatedAt;
   }, [documentId, blocks, lastKnownUpdatedAt]);
 

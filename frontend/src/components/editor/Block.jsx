@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useLayoutEffect, memo } from 'react';
+import React, { useRef, useEffect, useState, useLayoutEffect } from 'react';
 import DragHandle from './DragHandle';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -222,10 +222,4 @@ function Block({
   );
 }
 
-export default memo(Block, (prevProps, nextProps) => {
-  return (
-    prevProps.block === nextProps.block &&
-    prevProps.readOnly === nextProps.readOnly &&
-    prevProps.focused === nextProps.focused
-  );
-});
+export default Block;
