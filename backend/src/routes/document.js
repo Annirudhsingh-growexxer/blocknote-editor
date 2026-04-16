@@ -4,44 +4,13 @@ const db = require('../db');
 const authMiddleware = require('../middleware/auth');
 const shareTokenMiddleware = require('../middleware/shareToken');
 const rejectSharedWrites = require('../middleware/rejectSharedWrites');
+const { validateBlockContent, validateBlockType } = require('../lib/validators');
 
 const router = express.Router();
 
-const ALLOWED_BLOCK_TYPES = new Set([
-  'paragraph',
-  'heading_1',
-  'heading_2',
-  'todo',
-  'code',
-  'divider',
-  'image',
-]);
-
-function validateBlockContent(content) {
-  if (content === undefined || content === null) return null;
-  if (typeof content !== 'object' || Array.isArray(content)) return 'Invalid block content';
-
-  if ('text' in content) {
-    if (typeof content.text !== 'string') return 'Invalid block text';
-    if (content.text.length > 50000) return 'Content text too long';
-  }
-
-  if ('url' in content) {
-    if (typeof content.url !== 'string') return 'Invalid image URL';
-    if (content.url.length > 2000) return 'Image URL too long';
-  }
-
-  if ('checked' in content) {
-    if (typeof content.checked !== 'boolean') return 'Invalid todo checked value';
-  }
-
-  return null;
-}
-
-function validateBlockType(type) {
-  if (!ALLOWED_BLOCK_TYPES.has(type)) return 'Invalid block type';
-  return null;
-}
+// Matches the VARCHAR(500) column in schema.sql — validating here lets us
+// return a clean 422 instead of a Postgres 500.
+const MAX_TITLE_LENGTH = 500;
 
 
 async function assertOwnership(docId, userId) {
@@ -140,6 +109,16 @@ router.patch('/:id', async (req, res) => {
     await assertOwnership(req.params.id, req.user.id);
 
     const { title, is_public, blocks, lastKnownUpdatedAt } = req.body;
+
+    if (title !== undefined) {
+      if (typeof title !== 'string' || title.length === 0 || title.length > MAX_TITLE_LENGTH) {
+        return res.status(422).json({ error: `Title must be a string of 1-${MAX_TITLE_LENGTH} characters` });
+      }
+    }
+
+    if (is_public !== undefined && typeof is_public !== 'boolean') {
+      return res.status(422).json({ error: 'is_public must be a boolean' });
+    }
 
     try {
       await db.query('BEGIN');
