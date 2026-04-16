@@ -77,6 +77,18 @@ export default function Dashboard() {
     setDocuments(documents.map(d => d.id === id ? { ...d, title: newTitle } : d));
   };
 
+  const handleRename = async (id, newTitle) => {
+    // Optimistic update
+    setDocuments(prev => prev.map(d => d.id === id ? { ...d, title: newTitle } : d));
+    try {
+      await api.patch(`/api/documents/${id}`, { title: newTitle });
+    } catch (err) {
+      console.error('Rename failed', err);
+      // Revert on failure by refetching
+      fetchDocuments();
+    }
+  };
+
   const toggleSidebar = () => setSidebarOpen((open) => !open);
 
   return (
@@ -92,6 +104,7 @@ export default function Dashboard() {
             if (window.innerWidth < SIDEBAR_BREAKPOINT) setSidebarOpen(false);
           }}
           onDelete={handleDelete}
+          onRename={handleRename}
         />
       )}
 

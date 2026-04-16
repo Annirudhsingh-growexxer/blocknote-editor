@@ -105,7 +105,9 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     setBlocks(newBlocks);
     if (onChangeDebouncerRef.current) clearTimeout(onChangeDebouncerRef.current);
     onChangeDebouncerRef.current = setTimeout(() => {
-      onChange(blocksRef.current);
+      // Never propagate an empty array — the document route rejects it and the
+      // "empty doc" case is handled by auto-creating a paragraph instead.
+      if (blocksRef.current.length > 0) onChange(blocksRef.current);
     }, 400);
   };
 
@@ -451,7 +453,21 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
           return;
        } else if (isPlainCharacterKey(e.key)) {
           e.preventDefault();
-          setSlashState((state) => ({ ...state, filter: `${state.filter}${e.key}` }));
+          const nextFilter = `${slashState.filter}${e.key}`;
+          // Compute whether any items still match — if not, close the menu and
+          // revert the block text so no slash+filter chars are left behind.
+          const SLASH_ITEMS = ['paragraph','heading_1','heading_2','todo','code','divider','image'];
+          const SLASH_SHORTCUTS = ['p','#','##','[]','```','---','img'];
+          const labels = ['Paragraph','Heading 1','Heading 2','Todo','Code','Divider','Image'];
+          const hasMatch = SLASH_ITEMS.some((_, i) =>
+            labels[i].toLowerCase().includes(nextFilter.toLowerCase()) ||
+            SLASH_SHORTCUTS[i].toLowerCase().includes(nextFilter.toLowerCase())
+          );
+          if (!hasMatch) {
+            closeSlashMenu(true);
+            return;
+          }
+          setSlashState((state) => ({ ...state, filter: nextFilter }));
           return;
        } else if (['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) {
           return;
@@ -629,7 +645,8 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       if (!sel.rangeCount) return;
       const range = sel.getRangeAt(0);
       range.deleteContents();
-      const textNode = document.createTextNode('    ');
+      // Spec: Tab in code block inserts 2 spaces.
+      const textNode = document.createTextNode('  ');
       range.insertNode(textNode);
       range.setStartAfter(textNode);
       range.setEndAfter(textNode);

@@ -4,11 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import ConfirmModal from '../ui/ConfirmModal';
 
-export default function Sidebar({ documents, loading, onCreate, activeDocId, onSelect, onDelete }) {
+export default function Sidebar({ documents, loading, onCreate, activeDocId, onSelect, onDelete, onRename }) {
   const navigate = useNavigate();
   const [hoveredId, setHoveredId] = useState(null);
   const [deletingDoc, setDeletingDoc] = useState(null);
   const [deletePhase, setDeletePhase] = useState('confirm');
+  const [renamingId, setRenamingId] = useState(null);
+  const renameRef = React.useRef(null);
 
   const handleLogout = async () => {
     try {
@@ -34,6 +36,29 @@ export default function Sidebar({ documents, loading, onCreate, activeDocId, onS
     const days = Math.round(diff / 86400000);
     return rtf.format(-days, 'day');
   }
+
+  const startRename = (e, doc) => {
+    e.stopPropagation();
+    setRenamingId(doc.id);
+    // Focus the span after React renders it
+    requestAnimationFrame(() => {
+      if (renameRef.current) {
+        renameRef.current.focus();
+        const range = document.createRange();
+        range.selectNodeContents(renameRef.current);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+      }
+    });
+  };
+
+  const commitRename = async (doc) => {
+    const newTitle = renameRef.current?.textContent?.trim() || doc.title;
+    setRenamingId(null);
+    if (newTitle !== doc.title && onRename) {
+      await onRename(doc.id, newTitle);
+    }
+  };
 
   return (
     <div style={{
@@ -71,7 +96,8 @@ export default function Sidebar({ documents, loading, onCreate, activeDocId, onS
             key={doc.id}
             onMouseEnter={() => setHoveredId(doc.id)}
             onMouseLeave={() => setHoveredId(null)}
-            onClick={() => onSelect(doc.id)}
+            onClick={() => { if (renamingId !== doc.id) onSelect(doc.id); }}
+            onDoubleClick={(e) => startRename(e, doc)}
             style={{
               padding: '8px 12px', margin: '2px 0', borderRadius: 'var(--radius-sm)',
               cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -79,16 +105,39 @@ export default function Sidebar({ documents, loading, onCreate, activeDocId, onS
               borderLeft: activeDocId === doc.id ? '3px solid var(--accent)' : '3px solid transparent',
             }}
           >
-            <div style={{ overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-              <div style={{ color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {doc.title}
-              </div>
+            <div style={{ overflow: 'hidden', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+              {renamingId === doc.id ? (
+                <span
+                  ref={renameRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') { e.preventDefault(); commitRename(doc); }
+                    if (e.key === 'Escape') { setRenamingId(null); }
+                  }}
+                  onBlur={() => commitRename(doc)}
+                  style={{
+                    display: 'block', color: 'var(--text-primary)', outline: 'none',
+                    background: 'var(--bg-elevated)', borderRadius: '2px',
+                    padding: '0 2px', minWidth: '60px',
+                    border: '1px solid var(--accent)',
+                  }}
+                >
+                  {doc.title}
+                </span>
+              ) : (
+                <div style={{ color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden' }}
+                     title="Double-click to rename">
+                  {doc.title}
+                </div>
+              )}
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
                 {timeAgo(doc.updated_at)}
               </div>
             </div>
 
-            {hoveredId === doc.id && (
+            {hoveredId === doc.id && renamingId !== doc.id && (
               <div
                 className="doc-menu"
                 style={{ display: 'flex' }}

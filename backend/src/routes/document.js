@@ -170,7 +170,7 @@ router.patch('/:id', async (req, res) => {
       }
     }
 
-    if (title === undefined && is_public === undefined && (blocks === undefined || blocks.length === 0)) {
+    if (title === undefined && is_public === undefined && blocks === undefined) {
       return res.status(400).json({ error: 'No updatable fields provided' });
     }
 
