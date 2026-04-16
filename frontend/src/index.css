@@ -1,11 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4: single import replaces the v3 @tailwind base/components/utilities
+   directives. Without this the Home page (which uses Tailwind utility classes)
+   renders completely unstyled. */
+@import "tailwindcss";
 
+/* Tailwind v4 theme — generates utility classes from these CSS variables.
+   --color-<name>  → bg-<name>, text-<name>, border-<name>
+   --font-<name>   → font-<name>
+   These MD3-ish names are what frontend/src/pages/Home.jsx uses
+   (bg-primary-container, text-on-surface, border-outline-variant, etc). */
+@theme {
+  --color-primary:                    #f1c40f;
+  --color-primary-container:          #f1c40f;
+  --color-on-primary-container:       #231b00;
+  --color-on-primary:                 #231b00;
 
+  --color-surface-container-lowest:   #0e0e0e;
+  --color-surface-container-low:      #1c1b1b;
+  --color-surface-container:          #2a2a2a;
+  --color-surface-container-high:     #2a2a2a;
+  --color-surface-container-highest:  #353534;
+  --color-surface-variant:            #353534;
 
+  --color-on-surface:                 #e5e2e1;
+  --color-on-surface-variant:         #9a9078;
+
+  --color-outline:                    #9a9078;
+  --color-outline-variant:            #4d4632;
+
+  --font-body:                        'Inter', sans-serif;
+  --font-serif:                       'Newsreader', serif;
+}
 
 
 :root {
@@ -138,7 +165,21 @@ input {
   }
 }
 
-material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+}
 .serif-text { font-family: 'Newsreader', serif; }
 .halo-glow { background: radial-gradient(circle at center, rgba(241, 196, 15, 0.08) 0%, transparent 70%); }
 .grid-pattern { background-image: radial-gradient(rgba(241, 196, 15, 0.05) 1px, transparent 1px); background-size: 40px 40px; }
