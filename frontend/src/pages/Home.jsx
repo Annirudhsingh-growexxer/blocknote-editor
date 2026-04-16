@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import './Home.css';
+import Footer from '../components/layout/Footer';
 
 export default function Home() {
   const rawToken = localStorage.getItem('accessToken');
@@ -75,6 +76,8 @@ export default function Home() {
           </div>
         ))}
       </section>
+
+      <Footer />
     </div>
   );
 }
