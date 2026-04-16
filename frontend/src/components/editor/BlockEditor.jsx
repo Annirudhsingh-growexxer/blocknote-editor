@@ -15,6 +15,26 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
 
   const blocksRef = useRef([]);
   const autoFocusedDocumentRef = useRef(null);
+  const pendingFocusRef = useRef(null);
+
+  useEffect(() => {
+    if (!pendingFocusRef.current) return;
+    const { id, placement } = pendingFocusRef.current;
+    pendingFocusRef.current = null;
+    const el = document.querySelector(`.block-wrapper[data-id="${id}"] .block-content`);
+    if (el && el.isContentEditable) {
+      el.focus();
+      setFocusedId(id);
+      try {
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.selectNodeContents(el);
+        range.collapse(placement !== 'end');
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch(e) {}
+    }
+  });
 
   useEffect(() => {
     // Sort initial blocks
@@ -25,18 +45,19 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     }
   }, [initialBlocks]);
 
-  useEffect(() => {
-    if (readOnly) return;
-    if (!documentId || blocks.length === 0) return;
+  // In BlockEditor.jsx
+useEffect(() => {
+  if (readOnly) return;
+  // Even if blocks.length is 0, we should ensure the user can type
+  if (!documentId) return;
 
+  if (blocks.length > 0) {
     const firstBlock = blocks[0];
-    if (!firstBlock) return;
-
     if (autoFocusedDocumentRef.current === documentId) return;
     autoFocusedDocumentRef.current = documentId;
-    setFocusedId(firstBlock.id);
     focusBlock(firstBlock.id, 'start');
-  }, [documentId, blocks, readOnly]);
+  }
+}, [documentId, blocks.length, readOnly]); // Observe blocks.length specifically
 
   const updateBlocksState = (newBlocks) => {
      setBlocks(newBlocks);
@@ -94,21 +115,7 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
   };
 
   const focusBlock = (id, placement = 'end') => {
-    setTimeout(() => {
-       const el = document.querySelector(`.block-wrapper[data-id="${id}"] .block-content`);
-       if (el && el.isContentEditable) {
-          el.focus();
-          setFocusedId(id);
-          const range = document.createRange();
-          const sel = window.getSelection();
-          try {
-            range.selectNodeContents(el);
-            range.collapse(placement !== 'end');
-            sel.removeAllRanges();
-            sel.addRange(range);
-          } catch(e) {}
-       }
-    }, 10);
+    pendingFocusRef.current = { id, placement };
   };
 
   const createParagraphAfterIndex = async (indexAfter) => {
@@ -235,7 +242,7 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       // If converted to a non-editable block (divider) or the user expects
       // the cursor to continue on the next line even after a code block,
       // create a new paragraph after this block and focus it.
-      if (nextType === 'divider' || nextType === 'code') {
+      if (nextType === 'divider') {
         const index = nextBlocks.findIndex(b => b.id === blockId);
         await createParagraphAfterIndex(index);
       } else if (nextType !== 'image') {
@@ -305,18 +312,21 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     if (e.key === 'Enter') {
       e.preventDefault();
       
-      // If code block, enter just inserts newline, wait, tab inserts spaces.
+      // If code block, insert a newline at cursor position synchronously.
       if (currentBlock.type === 'code') {
-         const sel = window.getSelection();
-         const range = sel.getRangeAt(0);
-         range.deleteContents();
-         const br = document.createTextNode('\n');
-         range.insertNode(br);
-         range.setStartAfter(br);
-         range.setEndAfter(br);
-         sel.removeAllRanges();
-         sel.addRange(range);
-         return;
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return;
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const textNode = document.createTextNode('\n\n');
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.setEndAfter(textNode);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        // Dispatch input event so onInput fires and syncs state without overwriting DOM
+        el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        return;
       }
 
       const offset = getCursorOffset(el);
@@ -324,15 +334,22 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       const textBefore = fullText.slice(0, offset);
       const textAfter = fullText.slice(offset);
 
-      // PATCH current block
-      el.innerText = textBefore;
-      syncBlockMutation(blockId, { text: textBefore });
+      // Empty todo on Enter = escape the list, create a paragraph instead
+      if (currentBlock.type === 'todo' && fullText.trim() === '') {
+        try {
+          await api.patch(`/api/blocks/${blockId}`, { type: 'paragraph', content: { text: '' } });
+          const newBlocks = blocksRef.current.map(b =>
+            b.id === blockId ? { ...b, type: 'paragraph', content: { text: '' } } : b
+          );
+          updateBlocksState(newBlocks);
+          focusBlock(blockId, 'start');
+        } catch (err) { console.error(err); }
+        return;
+      }
 
-      // Explicitly save the old block immediately to avoid data duplication
-      // if the user closes the window before the 1s auto-save buffer flushes.
-      api.patch(`/api/blocks/${blockId}`, { 
-        content: { ...currentBlock.content, text: textBefore } 
-      }).catch(console.error);
+      const isTodo = currentBlock.type === 'todo';
+      const newBlockType = isTodo ? 'todo' : 'paragraph';
+      const newBlockContent = isTodo ? { text: textAfter, checked: false } : { text: textAfter };
 
       // Generate order index for new block
       const prevIndex = currentBlock.order_index;
@@ -343,17 +360,24 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       try {
          const { data: newBlock } = await api.post('/api/blocks', {
             document_id: documentId,
-            type: 'paragraph',
-            content: { text: textAfter },
+            type: newBlockType,
+            content: newBlockContent,
             order_index: newIndex
          });
+
+         // Update DOM and state together after the new block is ready
+         el.innerText = textBefore;
+         syncBlockMutation(blockId, { text: textBefore });
+         api.patch(`/api/blocks/${blockId}`, {
+           content: { ...currentBlock.content, text: textBefore }
+         }).catch(console.error);
 
          const newBlocks = [...blocksRef.current];
          newBlocks.splice(blockIndex + 1, 0, newBlock);
          updateBlocksState(newBlocks);
-         
+
          setFocusedId(newBlock.id);
-         focusBlock(newBlock.id, 'start'); // focus start
+         focusBlock(newBlock.id, 'start');
       } catch (err) { console.error(err); }
       return;
     }
@@ -386,7 +410,7 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
              const newBlocks = blocksRef.current.filter((b) => b.id !== prevBlock.id);
              updateBlocksState(newBlocks);
              // keep focus on the current block (it may have a new index)
-             setTimeout(() => focusBlock(blockId, 'start'), 10);
+             focusBlock(blockId, 'start');
            } catch (err) {
              console.error(err);
            }
@@ -426,7 +450,7 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
           const newBlocks = blocksRef.current.filter((b) => b.id !== nextBlock.id);
           updateBlocksState(newBlocks);
           // keep focus where it was
-          setTimeout(() => focusBlock(blockId, 'end'), 10);
+          focusBlock(blockId, 'end');
         } catch (err) {
           console.error(err);
         }
@@ -505,7 +529,7 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
        updateBlocksState(newBlocks);
        setSlashState({ isOpen: false, blockId: null, position: {x:0, y:0}, filter: '', originalText: '' });
 
-       if (type === 'divider' || type === 'code') {
+       if (type === 'divider') {
          const index = newBlocks.findIndex(b => b.id === blockId);
          await createParagraphAfterIndex(index);
        } else if (type !== 'image') {
