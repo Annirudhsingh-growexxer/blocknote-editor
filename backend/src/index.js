@@ -9,12 +9,29 @@ const authRouter = require('./routes/auth');
 const { documentsRouter, shareRouter } = require('./routes/document');
 const blocksRouter = require('./routes/block');
 
-const app = express();
-// When running behind a proxy/load-balancer that sets `X-Forwarded-For`,
-// enable `trust proxy` so express-rate-limit can identify clients correctly.
-app.set('trust proxy', true);
+// Fail fast if JWT_SECRET is missing or obviously too weak — otherwise the
+// server boots successfully and every auth request 500s at runtime instead.
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  console.error(
+    'FATAL: JWT_SECRET is missing or shorter than 32 characters. ' +
+    'Set a strong secret (see .env.example) before starting the server.'
+  );
+  process.exit(1);
+}
 
-app.set('trust proxy', true);
+const app = express();
+
+// `trust proxy: true` accepts every X-Forwarded-For hop, which lets a caller
+// spoof their IP and bypass express-rate-limit. Default to trusting a single
+// proxy; allow operators to override via the TRUST_PROXY env var (e.g. "2"
+// for two hops, or a CIDR like "loopback, 10.0.0.0/8").
+const trustProxyRaw = process.env.TRUST_PROXY;
+let trustProxy = 1;
+if (trustProxyRaw !== undefined) {
+  const asNumber = Number(trustProxyRaw);
+  trustProxy = Number.isFinite(asNumber) ? asNumber : trustProxyRaw;
+}
+app.set('trust proxy', trustProxy);
 
 // Allow multiple local dev origins and any origins provided via FRONTEND_URL (comma-separated).
 const defaultLocalOrigins = ['http://localhost:5173', 'http://localhost:5174','https://blocknote-editor-peach.vercel.app'];

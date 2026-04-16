@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const authMiddleware = require('../middleware/auth');
 const rejectSharedWrites = require('../middleware/rejectSharedWrites');
+const { validateBlockContent, validateBlockType } = require('../lib/validators');
 
 const router = express.Router();
 
