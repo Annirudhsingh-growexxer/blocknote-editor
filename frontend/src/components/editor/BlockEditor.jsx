@@ -3,7 +3,7 @@ import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import Block from './Block';
 import SlashMenu from './SlashMenu';
-import FormatToolbar from './FormatToolbar';
+import FormatToolbar, { selectionIsInEditor } from './FormatToolbar';
 import { insertAfter, needsRenormalization } from '../../lib/orderIndex';
 import api from '../../lib/api';
 
@@ -19,6 +19,11 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
   const blocksRef = useRef([]);
   const autoFocusedDocumentRef = useRef(null);
   const pendingFocusRef = useRef(null);
+  const editorRootRef = useRef(null);
+
+  // Floating Notion-style format toolbar state. `rect` is the selection's
+  // bounding rect (viewport-relative) — null means no toolbar shown.
+  const [toolbarRect, setToolbarRect] = useState(null);
 
   useEffect(() => {
     if (!pendingFocusRef.current) return;
@@ -693,8 +698,49 @@ useEffect(() => {
     setFocusedId(null);
   }, []);
 
+  // Show/hide the floating format toolbar on selection change. The toolbar
+  // only appears when the user has a non-collapsed selection inside an
+  // editable block in this editor instance.
+  useEffect(() => {
+    if (readOnly) return;
+    let rafId = 0;
+    const handler = () => {
+      // Batch via rAF — selectionchange fires a lot during drag-selects.
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const rect = selectionIsInEditor(editorRootRef.current);
+        setToolbarRect(rect);
+      });
+    };
+    document.addEventListener('selectionchange', handler);
+    return () => {
+      document.removeEventListener('selectionchange', handler);
+      cancelAnimationFrame(rafId);
+    };
+  }, [readOnly]);
+
+  // Re-emit the input event on the focused block after execCommand so that
+  // autosave picks up the formatting change. execCommand mutates the DOM
+  // directly and doesn't fire `input`.
+  const handleAfterFormat = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    let node = sel.anchorNode;
+    while (node && node !== document.body) {
+      if (node.nodeType === 1 && node.classList?.contains('block-content')) {
+        node.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        // Reposition toolbar against the new selection rect.
+        const r = sel.getRangeAt(0).getBoundingClientRect();
+        if (r.width > 0 || r.height > 0) setToolbarRect({ ...r.toJSON?.() || {}, top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height });
+        return;
+      }
+      node = node.parentNode;
+    }
+  }, []);
+
   return (
     <div
+      ref={editorRootRef}
       style={{
         paddingBottom: '20vh',
         minHeight: '70vh',
@@ -738,6 +784,14 @@ useEffect(() => {
           filter={slashState.filter} 
           onSelect={handleSlashSelect} 
           onClose={() => closeSlashMenu(true)} 
+        />
+      )}
+
+      {!readOnly && toolbarRect && !slashState.isOpen && (
+        <FormatToolbar
+          rect={toolbarRect}
+          editorRootRef={editorRootRef}
+          onAfterCommand={handleAfterFormat}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Zap, ClipboardList, Lock } from 'lucide-react';
 import './Home.css';
 import Footer from '../components/layout/Footer';
 
@@ -7,11 +8,28 @@ export default function Home() {
   const rawToken = localStorage.getItem('accessToken');
   const token = rawToken && rawToken !== 'undefined' && rawToken !== 'null' ? rawToken : null;
 
+  const features = [
+    {
+      Icon: Zap,
+      title: 'Turn text into headings',
+      body: 'Use our powerful inline block-type control (just type "/") to instantly convert a written paragraph into Headings, Todo lists, Code chunks, and more.'
+    },
+    {
+      Icon: ClipboardList,
+      title: 'Paste long notes cleanly',
+      body: 'Multi-line paste automatically splits your copied content into separate native blocks so meeting notes and drafts instantly remain organized.'
+    },
+    {
+      Icon: Lock,
+      title: 'Share publicly & safely',
+      body: 'Never worry about accidental edits. Generate a single public read-only link for quick review without giving modification access to anyone else.'
+    }
+  ];
+
   return (
     <div className="home-container">
-      {/* Dynamic Background Glows */}
-      <div className="home-bg-glow"></div>
-      <div className="home-bg-glow-2"></div>
+      <div className="home-bg-glow" aria-hidden="true"></div>
+      <div className="home-bg-grid" aria-hidden="true"></div>
 
       <header className="home-header">
         <div className="home-logo">BlockNote</div>
@@ -52,27 +70,13 @@ export default function Home() {
       </section>
 
       <section className="feature-grid">
-        {[
-          {
-            icon: '⚡️',
-            title: 'Turn text into headings',
-            body: 'Use our powerful inline block-type control (just type "/") to instantly convert a written paragraph into Headings, Todo lists, Code chunks, and more.'
-          },
-          {
-            icon: '📋',
-            title: 'Paste long notes cleanly',
-            body: 'Multi-line paste automatically splits your copied content into separate native blocks so meeting notes and drafts instantly remain organized.'
-          },
-          {
-            icon: '🔒',
-            title: 'Share publicly & safely',
-            body: 'Never worry about accidental edits. Generate a single public read-only link for quick review without giving modification access to anyone else.'
-          }
-        ].map((item) => (
-          <div key={item.title} className="feature-card">
-            <div className="feature-icon">{item.icon}</div>
-            <h2 className="feature-title">{item.title}</h2>
-            <p className="feature-body">{item.body}</p>
+        {features.map(({ Icon, title, body }) => (
+          <div key={title} className="feature-card">
+            <div className="feature-icon">
+              <Icon size={22} strokeWidth={1.75} />
+            </div>
+            <h2 className="feature-title">{title}</h2>
+            <p className="feature-body">{body}</p>
           </div>
         ))}
       </section>

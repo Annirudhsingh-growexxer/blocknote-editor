@@ -15,6 +15,17 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
   const saveSeqRef = useRef(0);
   const blocksVersionRef = useRef(0);
 
+  // Stash caller-supplied callbacks in refs so the identity of `persistBlocks`
+  // stays stable across renders. Inline arrow props in the parent would
+  // otherwise invalidate the callback every render, causing the autosave
+  // scheduler below to re-fire and keep the UI stuck in "Saving…".
+  const onServerDocumentUpdateRef = useRef(onServerDocumentUpdate);
+  const onConflictRef = useRef(onConflict);
+  useEffect(() => {
+    onServerDocumentUpdateRef.current = onServerDocumentUpdate;
+    onConflictRef.current = onConflict;
+  }, [onServerDocumentUpdate, onConflict]);
+
   const saveWithKeepalive = useCallback(async () => {
     if (!latestDocumentIdRef.current || !latestBlocksRef.current || !dirtyRef.current) return;
 
@@ -61,7 +72,7 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
 
       if (data?.updated_at) {
         latestUpdatedAtRef.current = data.updated_at;
-        onServerDocumentUpdate?.(data);
+        onServerDocumentUpdateRef.current?.(data);
       }
 
       // Only clear "dirty" if nothing changed while this request was in flight.
@@ -82,12 +93,12 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
       if (err.response?.status === 409) {
         conflictRef.current = true;
         setSaveStatus('error');
-        onConflict?.(err.response?.data);
+        onConflictRef.current?.(err.response?.data);
         return;
       }
       setSaveStatus('error');
     }
-  }, [onConflict, onServerDocumentUpdate]);
+  }, []);
 
   useEffect(() => {
     latestDocumentIdRef.current = documentId;
