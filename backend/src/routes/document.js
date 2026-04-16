@@ -115,10 +115,27 @@ router.patch('/:id', async (req, res) => {
   try {
     await assertOwnership(req.params.id, req.user.id);
 
-    const { title, is_public, blocks } = req.body;
+    const { title, is_public, blocks, lastKnownUpdatedAt } = req.body;
 
     try {
       await db.query('BEGIN');
+      const currentDocRes = await db.query(
+        'SELECT updated_at FROM documents WHERE id = $1 FOR UPDATE',
+        [req.params.id]
+      );
+      const currentUpdatedAt = currentDocRes.rows[0]?.updated_at;
+
+      if (blocks && Array.isArray(blocks) && lastKnownUpdatedAt && currentUpdatedAt) {
+        const clientTimestamp = new Date(lastKnownUpdatedAt);
+        const serverTimestamp = new Date(currentUpdatedAt);
+        if (!Number.isNaN(clientTimestamp.getTime()) && serverTimestamp > clientTimestamp) {
+          await db.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'Document has changed in another session. Please reload.',
+            updated_at: currentUpdatedAt,
+          });
+        }
+      }
 
       let updates = [];
       let values = [];

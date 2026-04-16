@@ -75,6 +75,49 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.post('/bulk', async (req, res) => {
+  try {
+    const { document_id, blocks } = req.body;
+    if (!Array.isArray(blocks) || blocks.length === 0) {
+      return res.status(400).json({ error: 'blocks array is required' });
+    }
+
+    const isOwner = await verifyDocumentOwnership(document_id, req.user.id);
+    if (!isOwner) return res.status(403).json({ error: 'Forbidden' });
+
+    for (const block of blocks) {
+      const contentError = validateBlockContent(block.content);
+      if (contentError) return res.status(422).json({ error: contentError });
+    }
+
+    await db.query('BEGIN');
+    const inserted = [];
+
+    for (const block of blocks) {
+      const result = await db.query(
+        'INSERT INTO blocks (document_id, type, content, order_index, parent_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [
+          document_id,
+          block.type || 'paragraph',
+          block.content || {},
+          block.order_index,
+          block.parent_id || null,
+        ]
+      );
+      inserted.push(result.rows[0]);
+    }
+
+    await touchDocument(document_id);
+    await db.query('COMMIT');
+
+    res.json(inserted);
+  } catch (err) {
+    await db.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.patch('/reorder', async (req, res) => {
   try {
     const { updates } = req.body; // [{ id, order_index }]
