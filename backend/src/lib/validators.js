@@ -19,7 +19,8 @@ const MAX_IMAGE_URL_LENGTH = 2000;
 // rendered somewhere other than an <img src>.
 function isSafeImageUrl(url) {
   if (typeof url !== 'string') return false;
-  if (url.length === 0 || url.length > MAX_IMAGE_URL_LENGTH) return false;
+  if (url.length === 0) return true; // empty = no image set yet, valid placeholder
+  if (url.length > MAX_IMAGE_URL_LENGTH) return false;
   return /^(https?:\/\/|\/)/i.test(url);
 }
 

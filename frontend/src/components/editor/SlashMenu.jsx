@@ -19,7 +19,7 @@ export default function SlashMenu({ position, filter, onSelect, onClose }) {
   );
 
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const displayedItems = filteredItems.slice(0, 6);
+  const displayedItems = filteredItems.slice(0, 7);
 
   useEffect(() => setSelectedIndex(0), [filter, filteredItems.length]);
 

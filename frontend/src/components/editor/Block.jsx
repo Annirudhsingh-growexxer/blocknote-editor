@@ -30,13 +30,17 @@ const HIGHLIGHT_COLORS = [
 ];
 
 function Block({ 
-  block, readOnly, onUpdate, onKeyDown, onPaste, onTypeChange, onImageSet, 
+  block, readOnly, onUpdate, onKeyDown, onPaste, onTypeChange, onImageSet,
   focused, selected, slashActive, onFocus, onBlur 
 }) {
+  const setImage = onImageSet || ((id, url) => onUpdate(id, { url }));
   const contentRef = useRef(null);
   const { id, type, content } = block;
   const [isHovered, setIsHovered] = useState(false);
+  // imageUrl is kept fully in-sync with content.url via an effect so that
+  // clicking "reset" (which sets content.url to '') always clears the input.
   const [imageUrl, setImageUrl] = useState(content.url || '');
+  const [imageError, setImageError] = useState(false);
   const [formatMenu, setFormatMenu] = useState(false); // open/close block format menu
   const [activeTab, setActiveTab] = useState('text');
   const formatBtnRef = useRef(null);
@@ -106,9 +110,12 @@ function Block({
     }
   }, [content?.text, type]);
 
+  // Sync local imageUrl state whenever content.url changes (including reset to '').
+  // Also clear any previous image error so the new URL gets a fresh attempt.
   useEffect(() => {
     setImageUrl(content.url || '');
-  }, [content.url]);
+    setImageError(false);
+  }, [content.url, id]); // include `id` so switching to a different image block resets too
 
   const handleInput = (e) => {
     // Store HTML for rich-text block types so inline formatting (<b>, <i>,
@@ -275,34 +282,32 @@ function Block({
           <div style={{ width: '100%', padding: '8px 0' }} tabIndex={readOnly ? -1 : 0} 
                onFocus={() => onFocus(id)}
                onKeyDown={(e) => { if (e.key === 'Backspace' || e.key === 'Delete') onKeyDown(e, id); }}>
-            {content.url ? (
+            {content.url && !imageError ? (
               <div style={{ position: 'relative' }}>
                 <img 
                   src={content.url} 
                   alt="Block content" 
                   style={{ maxWidth: '100%', borderRadius: 'var(--radius-md)', display: 'block' }} 
-                  onClick={() => { if (!readOnly) onUpdate(id, { url: '' }); }}
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
+                  onClick={() => { if (!readOnly) { setImage(id, ''); } }}
+                  onError={() => setImageError(true)}
                 />
-                <div style={{ 
-                  display: 'none', 
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '40px',
-                  background: 'var(--bg-overlay)',
-                  border: '1px dashed var(--border-default)',
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer'
-                }} onClick={() => { if (!readOnly) onUpdate(id, { url: '' }); }}>
-                  <span style={{ fontSize: '24px' }}>⚠️</span>
-                  <p>Image failed to load</p>
-                  <p style={{ fontSize: '0.8rem' }}>Click to edit URL</p>
-                </div>
+              </div>
+            ) : content.url && imageError ? (
+              <div style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '40px',
+                background: 'var(--bg-overlay)',
+                border: '1px dashed var(--border-default)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--text-muted)',
+                cursor: 'pointer'
+              }} onClick={() => { if (!readOnly) { setImage(id, ''); setImageError(false); } }}>
+                <span style={{ fontSize: '24px' }}>⚠️</span>
+                <p>Image failed to load</p>
+                <p style={{ fontSize: '0.8rem' }}>Click to edit URL</p>
               </div>
             ) : (
               <div style={{
@@ -317,15 +322,18 @@ function Block({
                   value={imageUrl}
                   onChange={e => setImageUrl(e.target.value)}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === 'Enter') {
                        e.preventDefault();
-                       const isValid = imageUrl.startsWith('http') || imageUrl.startsWith('/');
-                       if (isValid) onUpdate(id, { url: imageUrl });
+                       const trimmed = imageUrl.trim();
+                       const isValid = trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.startsWith('data:');
+                       if (isValid) setImage(id, trimmed);
                     }
                   }}
                   onBlur={() => {
-                    const isValid = imageUrl.startsWith('http') || imageUrl.startsWith('/');
-                    if (isValid) onUpdate(id, { url: imageUrl });
+                    const trimmed = imageUrl.trim();
+                    const isValid = trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.startsWith('data:');
+                    if (isValid && trimmed !== content.url) setImage(id, trimmed);
                   }}
                   disabled={readOnly}
                   style={{
@@ -381,11 +389,30 @@ function Block({
 }
 
 export default memo(Block, (prev, next) => {
-  return (
-    prev.block === next.block &&
-    prev.readOnly === next.readOnly &&
-    prev.focused === next.focused &&
-    prev.selected === next.selected &&
-    prev.slashActive === next.slashActive
-  );
+  // Shallow-compare block fields instead of reference identity so that only
+  // the block that actually changed causes a re-render. syncBlockMutation in
+  // BlockEditor always builds new objects, so reference equality would cause
+  // every block to re-render on every keystroke.
+  if (
+    prev.readOnly !== next.readOnly ||
+    prev.focused !== next.focused ||
+    prev.selected !== next.selected ||
+    prev.slashActive !== next.slashActive
+  ) return false;
+
+  const pb = prev.block;
+  const nb = next.block;
+  if (pb === nb) return true;
+  if (pb.id !== nb.id || pb.type !== nb.type) return false;
+
+  // Shallow-compare content fields
+  const pc = pb.content || {};
+  const nc = nb.content || {};
+  const pcKeys = Object.keys(pc);
+  const ncKeys = Object.keys(nc);
+  if (pcKeys.length !== ncKeys.length) return false;
+  for (const k of pcKeys) {
+    if (pc[k] !== nc[k]) return false;
+  }
+  return true;
 });

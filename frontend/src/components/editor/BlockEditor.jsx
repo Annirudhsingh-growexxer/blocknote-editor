@@ -35,12 +35,20 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
   const blocksRef = useRef([]);
   const autoFocusedDocumentRef = useRef(null);
   const pendingFocusRef = useRef(null);
+  // Counter incremented by focusBlock() — the effect below depends on it so
+  // it only runs when actually requested, not on every render.
+  const focusTriggerRef = useRef(0);
+  const [focusTrigger, setFocusTrigger] = useState(0);
   const editorRootRef = useRef(null);
+  // Debounce timer for propagating block changes to the parent onChange.
+  const onChangeDebouncerRef = useRef(null);
 
   // Floating Notion-style format toolbar state. `rect` is the selection's
   // bounding rect (viewport-relative) — null means no toolbar shown.
   const [toolbarRect, setToolbarRect] = useState(null);
 
+  // Only run when focusTrigger counter changes — prevents every unrelated
+  // state update (toolbar rect, save status, etc.) from clobbering the cursor.
   useEffect(() => {
     if (!pendingFocusRef.current) return;
     const { id, placement } = pendingFocusRef.current;
@@ -58,7 +66,7 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
         sel.addRange(range);
       } catch(e) {}
     }
-  });
+  }, [focusTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Hydrate internal blocks only when the editor is reloaded (NOT on every autosave keystroke)
@@ -71,19 +79,16 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     blocksRef.current = sorted;
   }, [hydrateNonce, documentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // In BlockEditor.jsx
-useEffect(() => {
-  if (readOnly) return;
-  // Even if blocks.length is 0, we should ensure the user can type
-  if (!documentId) return;
-
-  if (blocks.length > 0) {
-    const firstBlock = blocks[0];
+  // Auto-focus first block when a new document loads. Depends only on
+  // documentId so adding/removing blocks mid-session doesn't re-trigger.
+  useEffect(() => {
+    if (readOnly || !documentId) return;
     if (autoFocusedDocumentRef.current === documentId) return;
+    // Wait until at least one block is available before focusing.
+    if (blocksRef.current.length === 0) return;
     autoFocusedDocumentRef.current = documentId;
-    focusBlock(firstBlock.id, 'start');
-  }
-}, [documentId, blocks.length, readOnly]); // Observe blocks.length specifically
+    focusBlock(blocksRef.current[0].id, 'start');
+  }, [documentId, readOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateBlocksState = (newBlocks) => {
     setBlocks(newBlocks);
@@ -93,10 +98,29 @@ useEffect(() => {
 
   const syncBlockMutation = (id, content) => {
     const newBlocks = blocksRef.current.map(b => b.id === id ? { ...b, content: { ...b.content, ...content } } : b);
-    setBlocks(newBlocks);
+    // Update internal ref immediately so Enter/Backspace/paste logic always
+    // sees the latest text, but debounce the parent onChange (and thus the
+    // autosave scheduler + its re-renders) to ~400 ms.
     blocksRef.current = newBlocks;
-    onChange(newBlocks);
+    setBlocks(newBlocks);
+    if (onChangeDebouncerRef.current) clearTimeout(onChangeDebouncerRef.current);
+    onChangeDebouncerRef.current = setTimeout(() => {
+      onChange(blocksRef.current);
+    }, 400);
   };
+
+  const syncBlockMutationRef = useRef(syncBlockMutation);
+  useEffect(() => { syncBlockMutationRef.current = syncBlockMutation; });
+
+  const handleImageUrlSet = useCallback(async (id, url) => {
+    syncBlockMutationRef.current(id, { url });
+    try {
+      const { data } = await api.patch(`/api/blocks/${id}`, { content: { url } });
+      maybeTouchDoc(data);
+    } catch (err) {
+      console.error('Failed to save image URL:', err);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isPlainCharacterKey = (key) => key.length === 1 && !/\s/.test(key);
   const normalizeEditableText = (text) => (text || '').replace(/\u200B/g, '').replace(/\n/g, '');
@@ -143,6 +167,9 @@ useEffect(() => {
 
   const focusBlock = (id, placement = 'end') => {
     pendingFocusRef.current = { id, placement };
+    // Increment counter so the pending-focus effect actually fires.
+    focusTriggerRef.current += 1;
+    setFocusTrigger(focusTriggerRef.current);
   };
 
   const createParagraphAfterIndex = async (indexAfter) => {
@@ -174,11 +201,26 @@ useEffect(() => {
   };
 
   const insertPlainTextIntoBlock = (el, blockId, text) => {
-    const offset = getCursorOffset(el);
-    const currentText = el.innerText || '';
-    const nextText = `${currentText.slice(0, offset)}${text}${currentText.slice(offset)}`;
-    el.innerText = nextText;
-    syncBlockMutation(blockId, { text: nextText });
+    // Use the Range API to insert text at the exact cursor position without
+    // destroying existing HTML formatting or resetting the cursor to offset 0.
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const textNode = document.createTextNode(text);
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      // Let handleInput pick up the change via a synthetic event.
+      el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    } else {
+      // Fallback: no active selection — append at end.
+      const currentText = el.innerText || '';
+      el.innerText = currentText + text;
+      syncBlockMutation(blockId, { text: el.innerText });
+    }
   };
 
   const handlePaste = async (e, blockId) => {
@@ -223,15 +265,27 @@ useEffect(() => {
       return;
     }
 
-    // Handle first line in current block
+    // Handle first line: insert lines[0] at cursor position using Range API
+    // so existing formatting is preserved and the cursor stays correct.
     const el = e.target;
     const offset = getCursorOffset(el);
-    const textBefore = el.innerText.slice(0, offset);
-    const textAfter = el.innerText.slice(offset);
-    
-    const combinedFirstLine = textBefore + lines[0];
-    el.innerText = combinedFirstLine;
-    syncBlockMutation(blockId, { text: combinedFirstLine });
+    const rawText = el.innerText || '';
+    const textAfter = rawText.slice(offset);
+
+    // Replace selection (if any) with first pasted line
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && lines[0]) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const textNode = document.createTextNode(lines[0]);
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+
+    }
 
     // Insert subsequent lines using a single bulk API call for smoother pastes.
     const nextBlock = blocksRef.current[blockIndex + 1];
@@ -269,7 +323,8 @@ useEffect(() => {
       const lastInsertedBlock = insertedBlocks[insertedBlocks.length - 1];
       if (lastInsertedBlock) {
         setFocusedId(lastInsertedBlock.id);
-        focusBlock(lastInsertedBlock.id, 'start');
+        // Place cursor at END of the last pasted line (Notion behaviour).
+        focusBlock(lastInsertedBlock.id, 'end');
       }
     } catch (err) {
       console.error('Failed to paste multi-line content:', err);
@@ -305,7 +360,13 @@ useEffect(() => {
       if (nextType === 'divider') {
         const index = nextBlocks.findIndex(b => b.id === blockId);
         await createParagraphAfterIndex(index);
-      } else if (nextType !== 'image') {
+      } else if (nextType === 'image') {
+        setFocusedId(blockId);
+        setTimeout(() => {
+          const input = document.querySelector(`.block-wrapper[data-id="${blockId}"] input`);
+          if (input) input.focus();
+        }, 0);
+      } else {
         focusBlock(blockId, 'end');
       }
     } catch (err) {
@@ -719,7 +780,13 @@ useEffect(() => {
        if (type === 'divider') {
          const index = newBlocks.findIndex(b => b.id === blockId);
          await createParagraphAfterIndex(index);
-       } else if (type !== 'image') {
+       } else if (type === 'image') {
+         setFocusedId(blockId);
+         setTimeout(() => {
+           const input = document.querySelector(`.block-wrapper[data-id="${blockId}"] input`);
+           if (input) input.focus();
+         }, 0);
+       } else {
          focusBlock(blockId, 'end');
        }
      } catch (err) { console.error(err); }
@@ -807,6 +874,7 @@ useEffect(() => {
                 onPaste={handlePaste}
                 onTypeChange={handleTypeChange}
                 onUpdate={syncBlockMutation}
+                onImageSet={handleImageUrlSet}
               />
             </div>
           ))}
