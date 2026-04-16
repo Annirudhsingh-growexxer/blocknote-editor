@@ -194,6 +194,7 @@ export default function Editor({ documentId, onTitleChange, onToggleSidebar, sid
               onChange={setBlocks} 
               readOnly={false} 
               hydrateNonce={hydrateNonce}
+              onDocumentTouched={handleServerDocumentUpdate}
             />
           </div>
         </div>

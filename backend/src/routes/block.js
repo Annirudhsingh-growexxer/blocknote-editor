@@ -56,7 +56,14 @@ async function verifyDocumentOwnership(docId, userId) {
 }
 
 async function touchDocument(documentId) {
-  await db.query('UPDATE documents SET updated_at = NOW() WHERE id = $1', [documentId]);
+  // Return the fresh updated_at so the caller can echo it back to the client.
+  // Without this, block mutations silently bump documents.updated_at and the
+  // next autosave PATCH /documents sends a stale lastKnownUpdatedAt → 409.
+  const result = await db.query(
+    'UPDATE documents SET updated_at = NOW() WHERE id = $1 RETURNING updated_at',
+    [documentId]
+  );
+  return result.rows[0]?.updated_at || null;
 }
 
 router.post('/', async (req, res) => {
@@ -94,9 +101,9 @@ router.post('/', async (req, res) => {
       [document_id, blockType, content || {}, order_index, parent_id || null]
     );
 
-    await touchDocument(document_id);
+    const documentUpdatedAt = await touchDocument(document_id);
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({ ...result.rows[0], document_updated_at: documentUpdatedAt });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
@@ -167,11 +174,11 @@ router.post('/bulk', async (req, res) => {
       inserted.push(result.rows[0]);
     }
 
-    await touchDocument(document_id);
+    const documentUpdatedAt = await touchDocument(document_id);
     await db.query('COMMIT');
     transactionStarted = false;
 
-    res.status(201).json(inserted);
+    res.status(201).json({ blocks: inserted, document_updated_at: documentUpdatedAt });
   } catch (err) {
     if (transactionStarted) {
       try { await db.query('ROLLBACK'); } catch (_) { /* ignore rollback errors */ }
@@ -232,6 +239,8 @@ router.patch('/reorder', async (req, res) => {
     await db.query('BEGIN');
     transactionStarted = true;
 
+    const documentUpdatedAtByDoc = {};
+
     for (const update of updates) {
       await db.query('UPDATE blocks SET order_index = $1 WHERE id = $2', [update.order_index, update.id]);
     }
@@ -254,12 +263,13 @@ router.patch('/reorder', async (req, res) => {
         }
       }
 
-      await touchDocument(documentId);
+      const updatedAt = await touchDocument(documentId);
+      documentUpdatedAtByDoc[documentId] = updatedAt;
     }
 
     await db.query('COMMIT');
     transactionStarted = false;
-    res.json({ success: true });
+    res.json({ success: true, document_updated_at: documentUpdatedAtByDoc });
   } catch (err) {
     if (transactionStarted) {
       try { await db.query('ROLLBACK'); } catch (_) { /* ignore rollback errors */ }
@@ -322,8 +332,8 @@ router.patch('/:id', async (req, res) => {
       `UPDATE blocks SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
       values
     );
-    await touchDocument(blockData.document_id);
-    res.json(result.rows[0]);
+    const documentUpdatedAt = await touchDocument(blockData.document_id);
+    res.json({ ...result.rows[0], document_updated_at: documentUpdatedAt });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
@@ -340,8 +350,9 @@ router.delete('/:id', async (req, res) => {
     if (!blockData) return;
 
     await db.query('DELETE FROM blocks WHERE id = $1', [req.params.id]);
-    await touchDocument(blockData.document_id);
-    res.status(204).send();
+    const documentUpdatedAt = await touchDocument(blockData.document_id);
+    // 200 JSON so the client can update its lastKnownUpdatedAt after deletions.
+    res.status(200).json({ success: true, document_updated_at: documentUpdatedAt });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });

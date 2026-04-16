@@ -7,11 +7,27 @@ import FormatToolbar, { selectionIsInEditor } from './FormatToolbar';
 import { insertAfter, needsRenormalization } from '../../lib/orderIndex';
 import api from '../../lib/api';
 
-export default function BlockEditor({ documentId, initialBlocks, onChange, readOnly, hydrateNonce = 0 }) {
+export default function BlockEditor({ documentId, initialBlocks, onChange, readOnly, hydrateNonce = 0, onDocumentTouched }) {
   const [blocks, setBlocks] = useState([]);
   const [focusedId, setFocusedId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const selectionAnchorRef = useRef(null);
+
+  // After every block-level mutation the backend touches documents.updated_at
+  // and echoes the new timestamp back as `document_updated_at`. We forward it
+  // to the parent so useAutoSave's latestUpdatedAtRef stays fresh — otherwise
+  // the next autosave PATCH /documents sends a stale lastKnownUpdatedAt and
+  // the server responds 409 Conflict.
+  const onDocumentTouchedRef = useRef(onDocumentTouched);
+  useEffect(() => { onDocumentTouchedRef.current = onDocumentTouched; }, [onDocumentTouched]);
+  const maybeTouchDoc = useCallback((data) => {
+    const ts = data && (data.document_updated_at || data.documentUpdatedAt);
+    if (!ts || !onDocumentTouchedRef.current) return;
+    // reorder returns an object keyed by doc-id; editor only owns one doc
+    // so take the first string timestamp we can find.
+    const flat = typeof ts === 'string' ? ts : Object.values(ts).find((v) => typeof v === 'string');
+    if (flat) onDocumentTouchedRef.current({ updated_at: flat });
+  }, []);
   
   // Slash menu state
   const [slashState, setSlashState] = useState({ isOpen: false, blockId: null, position: {x:0, y:0}, filter: '', originalText: '' });
@@ -110,9 +126,10 @@ useEffect(() => {
     try {
        // Send batch reorder to API
        // Will trigger renormalization on backend if needed
-       await api.patch('/api/blocks/reorder', {
+       const { data: reorderData } = await api.patch('/api/blocks/reorder', {
          updates: [{ id: active.id, order_index: newOrderIndex }]
        });
+       maybeTouchDoc(reorderData);
        
        if (needsRenormalization(reordered)) {
           // Sync with server if we trigger renorm
@@ -142,6 +159,7 @@ useEffect(() => {
         content: { text: '' },
         order_index: newOrderIndex,
       });
+      maybeTouchDoc(newBlock);
 
       const newBlocks = [...blocksRef.current];
       newBlocks.splice(indexAfter + 1, 0, newBlock);
@@ -233,10 +251,16 @@ useEffect(() => {
     }
 
     try {
-      const { data: insertedBlocks } = await api.post('/api/blocks/bulk', {
+      const { data: bulkResponse } = await api.post('/api/blocks/bulk', {
         document_id: documentId,
         blocks: blocksPayload,
       });
+      maybeTouchDoc(bulkResponse);
+      // Backend now returns { blocks, document_updated_at } but older callers
+      // may still get a raw array during rollout — support both.
+      const insertedBlocks = Array.isArray(bulkResponse)
+        ? bulkResponse
+        : (bulkResponse?.blocks || []);
 
       const newBlocks = [...blocksRef.current];
       newBlocks.splice(blockIndex + 1, 0, ...insertedBlocks);
@@ -270,6 +294,7 @@ useEffect(() => {
         type: nextType,
         content: nextContent,
       });
+      maybeTouchDoc(data);
 
       const nextBlocks = blocksRef.current.map((block) => (block.id === blockId ? data : block));
       updateBlocksState(nextBlocks);
@@ -405,7 +430,8 @@ useEffect(() => {
       // Empty todo on Enter = escape the list, create a paragraph instead
       if (currentBlock.type === 'todo' && fullText.trim() === '') {
         try {
-          await api.patch(`/api/blocks/${blockId}`, { type: 'paragraph', content: { text: '' } });
+          const { data: converted } = await api.patch(`/api/blocks/${blockId}`, { type: 'paragraph', content: { text: '' } });
+          maybeTouchDoc(converted);
           const newBlocks = blocksRef.current.map(b =>
             b.id === blockId ? { ...b, type: 'paragraph', content: { text: '' } } : b
           );
@@ -439,13 +465,14 @@ useEffect(() => {
             content: newBlockContent,
             order_index: newIndex
          });
+         maybeTouchDoc(newBlock);
 
          // Update DOM and state together after the new block is ready
          el.innerText = textBefore;
          syncBlockMutation(blockId, { text: textBefore });
          api.patch(`/api/blocks/${blockId}`, {
            content: { ...currentBlock.content, text: textBefore }
-         }).catch(console.error);
+         }).then(({ data }) => maybeTouchDoc(data)).catch(console.error);
 
          const newBlocks = [...blocksRef.current];
          newBlocks.splice(blockIndex + 1, 0, newBlock);
@@ -487,7 +514,8 @@ useEffect(() => {
            .find((block) => block.type !== 'divider' && block.type !== 'image');
 
          try {
-            await api.delete(`/api/blocks/${blockId}`);
+            const { data: deletedResp } = await api.delete(`/api/blocks/${blockId}`);
+            maybeTouchDoc(deletedResp);
             const newBlocks = blocksRef.current.filter((block) => block.id !== blockId);
             updateBlocksState(newBlocks);
 
@@ -508,7 +536,8 @@ useEffect(() => {
       if (offset === textLen && nextBlock && ['divider', 'image', 'code'].includes(nextBlock.type)) {
         e.preventDefault();
         try {
-          await api.delete(`/api/blocks/${nextBlock.id}`);
+          const { data: deletedResp } = await api.delete(`/api/blocks/${nextBlock.id}`);
+          maybeTouchDoc(deletedResp);
           const newBlocks = blocksRef.current.filter((b) => b.id !== nextBlock.id);
           updateBlocksState(newBlocks);
           // keep focus where it was
@@ -598,7 +627,14 @@ useEffect(() => {
     const prevBlocks = blocksRef.current;
 
     // Speed: delete in parallel (UI reconciles from local state after)
-    await Promise.all(idsToDelete.map((blockId) => api.delete(`/api/blocks/${blockId}`).catch(() => null)));
+    const results = await Promise.all(idsToDelete.map((blockId) => api.delete(`/api/blocks/${blockId}`).catch(() => null)));
+    // Any successful delete gives us a fresh document_updated_at; take the last one.
+    for (let i = results.length - 1; i >= 0; i--) {
+      if (results[i]?.data?.document_updated_at) {
+        maybeTouchDoc(results[i].data);
+        break;
+      }
+    }
 
     const remaining = prevBlocks.filter((b) => !idsSet.has(b.id));
     updateBlocksState(remaining);
@@ -671,6 +707,7 @@ useEffect(() => {
      // Update block type
      try {
        const { data } = await api.patch(`/api/blocks/${blockId}`, { type, content: nextContent });
+       maybeTouchDoc(data);
        const newBlocks = blocksRef.current.map(b => b.id === blockId ? data : b);
        updateBlocksState(newBlocks);
        setSlashState({ isOpen: false, blockId: null, position: {x:0, y:0}, filter: '', originalText: '' });
