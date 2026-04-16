@@ -2,44 +2,9 @@ const express = require('express');
 const db = require('../db');
 const authMiddleware = require('../middleware/auth');
 const rejectSharedWrites = require('../middleware/rejectSharedWrites');
+const { validateBlockContent, validateBlockType } = require('../lib/validators');
 
 const router = express.Router();
-
-const ALLOWED_BLOCK_TYPES = new Set([
-  'paragraph',
-  'heading_1',
-  'heading_2',
-  'todo',
-  'code',
-  'divider',
-  'image',
-]);
-
-function validateBlockContent(content) {
-  if (content === undefined || content === null) return null;
-  if (typeof content !== 'object' || Array.isArray(content)) return 'Invalid block content';
-
-  if ('text' in content) {
-    if (typeof content.text !== 'string') return 'Invalid block text';
-    if (content.text.length > 50000) return 'Content text too long';
-  }
-
-  if ('url' in content) {
-    if (typeof content.url !== 'string') return 'Invalid image URL';
-    if (content.url.length > 2000) return 'Image URL too long';
-  }
-
-  if ('checked' in content) {
-    if (typeof content.checked !== 'boolean') return 'Invalid todo checked value';
-  }
-
-  return null;
-}
-
-function validateBlockType(type) {
-  if (!ALLOWED_BLOCK_TYPES.has(type)) return 'Invalid block type';
-  return null;
-}
 
 
 router.use(rejectSharedWrites);
