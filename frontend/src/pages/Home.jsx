@@ -81,6 +81,138 @@ export default function Home() {
         ))}
       </section>
 
+      <section className="showcase-section">
+        <div className="showcase-copy">
+          <p className="showcase-label">Secure task management for teams</p>
+          <h2 className="showcase-heading">Work on big ideas, without the busywork.</h2>
+          <p className="showcase-description">
+            From the small stuff to the big picture, BlockNote organizes work so teams know what to do, why it matters, and how to get it done.
+          </p>
+        </div>
+
+        <div className="showcase-panels">
+          <article className="showcase-panel panel-pink">
+            <div className="panel-heading">On going Project</div>
+            <div className="panel-avatar-row">
+              <span className="panel-avatar">B</span>
+              <div className="panel-line-group">
+                <span className="panel-line panel-line-short"></span>
+                <span className="panel-line panel-line-long"></span>
+              </div>
+            </div>
+            <ul className="panel-list">
+              <li>New Brand</li>
+              <li>Product Road Map</li>
+            </ul>
+            <div className="panel-line-group panel-line-group-compact">
+              <span className="panel-line"></span>
+              <span className="panel-line panel-line-short"></span>
+            </div>
+          </article>
+
+          <article className="showcase-panel panel-yellow">
+            <div className="panel-heading">Daily Activity</div>
+            <div className="task-list">
+              <div className="task-row">
+                <span className="task-dot filled"></span>
+                <span>Review meeting notes</span>
+              </div>
+              <div className="task-row">
+                <span className="task-dot filled"></span>
+                <span>Plan next launch</span>
+              </div>
+              <div className="task-row">
+                <span className="task-dot"></span>
+                <span>Share updates with team</span>
+              </div>
+            </div>
+          </article>
+
+          <article className="showcase-panel panel-purple">
+            <div className="panel-heading">Live Conversation</div>
+            <div className="chat-row">
+              <span className="panel-avatar">A</span>
+              <div className="chat-block">
+                <span className="chat-line"></span>
+                <span className="chat-line chat-line-short"></span>
+              </div>
+            </div>
+            <div className="chat-row">
+              <span className="panel-avatar">C</span>
+              <div className="chat-block">
+                <span className="chat-line"></span>
+                <span className="chat-line chat-line-short"></span>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div className="showcase-metrics">
+          <div className="metric-item">
+            <strong>Secure</strong>
+            <span>and compliant</span>
+          </div>
+          <div className="metric-item">
+            <strong>4 Million</strong>
+            <span>and compliant</span>
+          </div>
+          <div className="metric-item">
+            <strong>Editor's Choice</strong>
+            <span>iOS App Store</span>
+          </div>
+          <div className="metric-item">
+            <strong>4.7 Stars</strong>
+            <span>Google Play Store</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="cta-section">
+        <div className="cta-scatter-badges">
+          <span className="scatter-badge sb-1">Block Editor</span>
+          <span className="scatter-badge sb-2">Auto Save</span>
+          <span className="scatter-badge sb-3">Rich Text</span>
+          <span className="scatter-badge sb-4">Public Share</span>
+          <span className="scatter-badge sb-5">Slash Commands</span>
+          <span className="scatter-badge sb-6">Drag & Drop</span>
+          <span className="scatter-badge sb-7">Todo Lists</span>
+          <span className="scatter-badge sb-8">Code Blocks</span>
+          <span className="scatter-badge sb-9">Headings</span>
+        </div>
+
+        <div className="cta-content">
+          <h2 className="cta-heading">
+            Let's Create an <span className="cta-accent">Amazing Project</span> Together!
+          </h2>
+          <button className="cta-button">Contact Us</button>
+        </div>
+
+        <div className="cta-services-bar">
+          <div className="marquee-track">
+            {[...Array(2)].map((_, i) => (
+              <div className="marquee-content" key={i}>
+                <span className="service-item">Block Editor</span>
+                <span className="service-separator">✱</span>
+                <span className="service-item">Auto Save</span>
+                <span className="service-separator">✱</span>
+                <span className="service-item">Slash Commands</span>
+                <span className="service-separator">✱</span>
+                <span className="service-item">Drag & Drop Blocks</span>
+                <span className="service-separator">✱</span>
+                <span className="service-item">Public Share Links</span>
+                <span className="service-separator">✱</span>
+                <span className="service-item">Rich Text</span>
+                <span className="service-separator">✱</span>
+                <span className="service-item">Todo Lists</span>
+                <span className="service-separator">✱</span>
+                <span className="service-item">Code Blocks</span>
+                <span className="service-separator">✱</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <Footer />
     </div>
   );

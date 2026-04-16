@@ -32,31 +32,6 @@ function sendError(res, err, fallbackStatus = 500) {
   return res.status(fallbackStatus).json({ error: 'Internal server error' });
 }
 
-function validateBlockContent(content) {
-  if (content === undefined || content === null) return null;
-  if (typeof content !== 'object' || Array.isArray(content)) return 'Invalid block content';
-
-  if ('text' in content) {
-    if (typeof content.text !== 'string') return 'Invalid block text';
-    if (content.text.length > 50000) return 'Content text too long';
-  }
-
-  if ('url' in content) {
-    if (typeof content.url !== 'string') return 'Invalid image URL';
-    if (content.url.length > 2000) return 'Image URL too long';
-  }
-
-  if ('checked' in content) {
-    if (typeof content.checked !== 'boolean') return 'Invalid todo checked value';
-  }
-
-  return null;
-}
-
-function validateBlockType(type) {
-  if (!ALLOWED_BLOCK_TYPES.has(type)) return 'Invalid block type';
-  return null;
-}
 
 
 async function assertOwnership(docId, userId) {
