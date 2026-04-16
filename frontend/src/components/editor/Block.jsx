@@ -274,14 +274,14 @@ function Block({
           <div style={{ padding: '8px 0', width: '100%', cursor: 'pointer' }}
                tabIndex={readOnly ? -1 : 0} 
                onFocus={() => onFocus(id)}
-               onKeyDown={(e) => { if (e.key === 'Backspace' || e.key === 'Delete') onKeyDown(e, id); }}
+               onKeyDown={(e) => { if (['Backspace', 'Delete', 'Enter'].includes(e.key)) onKeyDown(e, id); }}
           >
             <hr style={{ border: 'none', height: '1px', background: 'var(--border-default)', margin: 0 }} />
           </div>
         ) : type === 'image' ? (
           <div style={{ width: '100%', padding: '8px 0' }} tabIndex={readOnly ? -1 : 0} 
                onFocus={() => onFocus(id)}
-               onKeyDown={(e) => { if (e.key === 'Backspace' || e.key === 'Delete') onKeyDown(e, id); }}>
+               onKeyDown={(e) => { if (['Backspace', 'Delete', 'Enter'].includes(e.key)) onKeyDown(e, id); }}>
             {content.url && !imageError ? (
               <div style={{ position: 'relative' }}>
                 <img 
@@ -322,6 +322,12 @@ function Block({
                   value={imageUrl}
                   onChange={e => setImageUrl(e.target.value)}
                   onKeyDown={(e) => {
+                    // When the URL input is empty, let Backspace/Delete bubble up to
+                    // the parent so the whole image block gets deleted — same UX as
+                    // pressing Backspace on any other empty block.
+                    if ((e.key === 'Backspace' || e.key === 'Delete') && imageUrl === '') {
+                      return; // let it bubble to the outer div's onKeyDown
+                    }
                     e.stopPropagation();
                     if (e.key === 'Enter') {
                        e.preventDefault();

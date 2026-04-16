@@ -465,9 +465,19 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     // EDGE CASE 1 & 2: Enter Mid-Block Split
     if (e.key === 'Enter') {
       e.preventDefault();
+
+      // Image / divider blocks are non-editable — Enter exits to a new paragraph below.
+      if (currentBlock.type === 'image' || currentBlock.type === 'divider') {
+        await createParagraphAfterIndex(blockIndex);
+        return;
+      }
       
-      // If code block, insert a newline at cursor position synchronously.
+      // Code block: Shift+Enter exits to a new paragraph below; plain Enter inserts newline.
       if (currentBlock.type === 'code') {
+        if (e.shiftKey) {
+          await createParagraphAfterIndex(blockIndex);
+          return;
+        }
         const sel = window.getSelection();
         if (!sel.rangeCount) return;
         const range = sel.getRangeAt(0);
@@ -580,7 +590,11 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
             const newBlocks = blocksRef.current.filter((block) => block.id !== blockId);
             updateBlocksState(newBlocks);
 
-            if (previousEditableBlock) {
+            if (newBlocks.length === 0) {
+              // Document is now empty — create a fresh paragraph so the user
+              // always has somewhere to type and autosave never sees blocks:[].
+              await createParagraphAfterIndex(-1);
+            } else if (previousEditableBlock) {
               focusBlock(previousEditableBlock.id, 'end');
             }
          } catch (e) {}
@@ -634,6 +648,10 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     const lastEditableBlock = editableBlocks[editableBlocks.length - 1];
     if (lastEditableBlock) {
       focusBlock(lastEditableBlock.id, 'end');
+    } else {
+      // No editable block exists (doc is all images/dividers or empty) —
+      // spawn a paragraph so the user can start typing immediately.
+      void createParagraphAfterIndex(blocksRef.current.length - 1);
     }
   };
 
@@ -701,7 +719,11 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     updateBlocksState(remaining);
     setSelectedIds(new Set());
 
-    if (remaining.length === 0) return;
+    if (remaining.length === 0) {
+      // Bulk-delete wiped the whole document — create a fresh paragraph.
+      await createParagraphAfterIndex(-1);
+      return;
+    }
 
     // Focus nearest block after deletions.
     const firstDeletedIndex = prevBlocks.findIndex((b) => idsSet.has(b.id));
