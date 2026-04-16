@@ -40,7 +40,7 @@ export default function ShareModal({ documentId, initialIsPublic, initialToken, 
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
     }}>
-      <div style={{
+      <div role="dialog" aria-modal="true" aria-labelledby="share-modal-title" style={{
         background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
         borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '480px', padding: '24px',
         animation: 'modalIn var(--t-mid) var(--ease-snap)', position: 'relative'
@@ -53,13 +53,15 @@ export default function ShareModal({ documentId, initialIsPublic, initialToken, 
           <X size={20} />
         </button>
         
-        <h2 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)', marginBottom: '24px' }}>Share Document</h2>
+        <h2 id="share-modal-title" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)', marginBottom: '24px' }}>Share Document</h2>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
           <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Enable public link</span>
           <button 
             disabled={loading}
             onClick={toggleShare} 
+            aria-pressed={isPublic}
+            aria-label={isPublic ? 'Disable public link' : 'Enable public link'}
             style={{
               width: '44px', height: '24px', borderRadius: '12px',
               background: isPublic ? 'var(--accent)' : 'var(--bg-overlay)',

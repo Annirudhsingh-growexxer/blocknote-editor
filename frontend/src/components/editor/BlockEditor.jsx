@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import Block from './Block';
@@ -185,35 +185,40 @@ useEffect(() => {
     el.innerText = combinedFirstLine;
     syncBlockMutation(blockId, { text: combinedFirstLine });
 
-    // Insert subsequent lines as new blocks
-    let lastIndex = blockIndex;
-    let currentTextAfter = textAfter;
+    // Insert subsequent lines using a single bulk API call for smoother pastes.
+    const nextBlock = blocksRef.current[blockIndex + 1];
+    const insertionUpperBound = nextBlock ? nextBlock.order_index : currentBlock.order_index + 2;
+    const blocksPayload = [];
+    let previousOrder = currentBlock.order_index;
 
-    // Remaining lines except the last one inserted as full blocks
     for (let i = 1; i < lines.length; i++) {
-      const lineText = lines[i];
-      const isLastContent = (i === lines.length - 1);
-      
-      const prev = blocksRef.current[lastIndex];
-      const next = blocksRef.current[lastIndex + 1];
-      const newOrderIndex = insertAfter(prev.order_index, next ? next.order_index : prev.order_index + 2);
-
-      const { data: newBlock } = await api.post('/api/blocks', {
-        document_id: documentId,
+      const isLastContent = i === lines.length - 1;
+      const nextOrder = insertAfter(previousOrder, insertionUpperBound);
+      blocksPayload.push({
         type: 'paragraph',
-        content: { text: lineText + (isLastContent ? currentTextAfter : '') },
-        order_index: newOrderIndex,
+        content: { text: `${lines[i]}${isLastContent ? textAfter : ''}` },
+        order_index: nextOrder,
+      });
+      previousOrder = nextOrder;
+    }
+
+    try {
+      const { data: insertedBlocks } = await api.post('/api/blocks/bulk', {
+        document_id: documentId,
+        blocks: blocksPayload,
       });
 
       const newBlocks = [...blocksRef.current];
-      newBlocks.splice(lastIndex + 1, 0, newBlock);
+      newBlocks.splice(blockIndex + 1, 0, ...insertedBlocks);
       updateBlocksState(newBlocks);
-      lastIndex++;
-      
-      if (isLastContent) {
-        setFocusedId(newBlock.id);
-        focusBlock(newBlock.id, 'start');
+
+      const lastInsertedBlock = insertedBlocks[insertedBlocks.length - 1];
+      if (lastInsertedBlock) {
+        setFocusedId(lastInsertedBlock.id);
+        focusBlock(lastInsertedBlock.id, 'start');
       }
+    } catch (err) {
+      console.error('Failed to paste multi-line content:', err);
     }
   };
 
@@ -538,6 +543,16 @@ useEffect(() => {
      } catch (err) { console.error(err); }
   };
 
+  const handleBlockFocus = useCallback((id) => {
+    if (!readOnly) {
+      setFocusedId(id);
+    }
+  }, [readOnly]);
+
+  const handleBlockBlur = useCallback(() => {
+    setFocusedId(null);
+  }, []);
+
   return (
     <div
       style={{
@@ -556,8 +571,8 @@ useEffect(() => {
                 block={block}
                 readOnly={readOnly}
                 focused={focusedId === block.id}
-                onFocus={(id) => { if(!readOnly) setFocusedId(id); }}
-                onBlur={() => setFocusedId(null)}
+                onFocus={handleBlockFocus}
+                onBlur={handleBlockBlur}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 onTypeChange={handleTypeChange}

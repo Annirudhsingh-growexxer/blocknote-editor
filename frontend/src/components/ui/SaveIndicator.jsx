@@ -7,7 +7,7 @@ export default function SaveIndicator({ status }) {
   if (status === 'idle') return null;
 
   return (
-    <div style={{
+    <div aria-live="polite" role="status" style={{
       position: 'absolute', top: '16px', right: '100%', marginRight: '24px',
       fontFamily: 'var(--font-ui)', fontSize: '0.75rem', fontWeight: 500,
       display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',

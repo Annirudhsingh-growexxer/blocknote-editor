@@ -20,7 +20,7 @@ export default function ConfirmModal({
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
     }}>
-      <div style={{
+      <div role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" style={{
         background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
         borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '480px', padding: '24px',
         animation: 'modalIn var(--t-mid) var(--ease-snap)', position: 'relative'
@@ -55,7 +55,7 @@ export default function ConfirmModal({
           </div>
         ) : (
           <>
-            <h2 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)', marginBottom: '8px', paddingRight: '32px' }}>
+            <h2 id="confirm-modal-title" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)', marginBottom: '8px', paddingRight: '32px' }}>
               {title}
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '24px' }}>

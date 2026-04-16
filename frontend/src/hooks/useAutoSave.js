@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../lib/api';
 
-export function useAutoSave(documentId, blocks) {
+export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocumentUpdate, onConflict) {
   const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
   const abortRef = useRef(null);
   const timeoutRef = useRef(null);
@@ -9,6 +9,7 @@ export function useAutoSave(documentId, blocks) {
   const lastSnapshotRef = useRef('');
   const latestDocumentIdRef = useRef(documentId);
   const latestBlocksRef = useRef(blocks);
+  const latestUpdatedAtRef = useRef(lastKnownUpdatedAt);
   const dirtyRef = useRef(false);
 
   const saveWithKeepalive = useCallback(async () => {
@@ -22,7 +23,10 @@ export function useAutoSave(documentId, blocks) {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       credentials: 'include',
-      body: JSON.stringify({ blocks: latestBlocksRef.current }),
+      body: JSON.stringify({
+        blocks: latestBlocksRef.current,
+        lastKnownUpdatedAt: latestUpdatedAtRef.current,
+      }),
       keepalive: true,
     });
   }, []);
@@ -38,13 +42,20 @@ export function useAutoSave(documentId, blocks) {
     abortRef.current = controller;
 
     try {
-      await api.patch(
+      const { data } = await api.patch(
         `/api/documents/${latestDocumentIdRef.current}`,
-        { blocks: latestBlocksRef.current },
+        {
+          blocks: latestBlocksRef.current,
+          lastKnownUpdatedAt: latestUpdatedAtRef.current,
+        },
         { signal: controller.signal }
       );
 
       dirtyRef.current = false;
+      if (data?.updated_at) {
+        latestUpdatedAtRef.current = data.updated_at;
+        onServerDocumentUpdate?.(data);
+      }
       setSaveStatus('saved');
       setTimeout(() => {
         setSaveStatus((current) => (current === 'saved' ? 'idle' : current));
@@ -53,14 +64,20 @@ export function useAutoSave(documentId, blocks) {
       if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
         return;
       }
+      if (err.response?.status === 409) {
+        setSaveStatus('error');
+        onConflict?.(err.response?.data);
+        return;
+      }
       setSaveStatus('error');
     }
-  }, []);
+  }, [onConflict, onServerDocumentUpdate]);
 
   useEffect(() => {
     latestDocumentIdRef.current = documentId;
     latestBlocksRef.current = blocks;
-  }, [documentId, blocks]);
+    latestUpdatedAtRef.current = lastKnownUpdatedAt;
+  }, [documentId, blocks, lastKnownUpdatedAt]);
 
   useEffect(() => {
     if (!documentId || !blocks) return;
@@ -124,5 +141,13 @@ export function useAutoSave(documentId, blocks) {
     };
   }, [saveWithKeepalive]);
 
-  return { saveStatus };
+  const flushNow = useCallback(async () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    await persistBlocks();
+  }, [persistBlocks]);
+
+  return { saveStatus, flushNow };
 }

@@ -1,9 +1,9 @@
-import React, { useRef, useEffect, useState, useLayoutEffect } from 'react';
+import React, { useRef, useEffect, useState, useLayoutEffect, memo } from 'react';
 import DragHandle from './DragHandle';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-export default function Block({ 
+function Block({ 
   block, readOnly, onUpdate, onKeyDown, onPaste, onTypeChange, onImageSet, 
   focused, onFocus, onBlur 
 }) {
@@ -83,8 +83,18 @@ export default function Block({
           marginLeft: '-8px'
       }}>
         {type === 'todo' && (
-          <div 
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={Boolean(content.checked)}
+            aria-label={content.checked ? 'Mark todo as incomplete' : 'Mark todo as complete'}
             onClick={toggleTodo}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleTodo();
+              }
+            }}
             style={{
               width: '16px', height: '16px', border: '1px solid var(--border-default)',
               borderRadius: 'var(--radius-sm)', background: content.checked ? 'var(--accent)' : 'transparent',
@@ -93,7 +103,7 @@ export default function Block({
             }}
           >
             {content.checked && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L4 7L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-          </div>
+          </button>
         )}
 
         {type === 'divider' ? (
@@ -211,3 +221,11 @@ export default function Block({
     </div>
   );
 }
+
+export default memo(Block, (prevProps, nextProps) => {
+  return (
+    prevProps.block === nextProps.block &&
+    prevProps.readOnly === nextProps.readOnly &&
+    prevProps.focused === nextProps.focused
+  );
+});

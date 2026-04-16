@@ -68,7 +68,7 @@ export default function SlashMenu({ position, filter, onSelect, onClose }) {
   if (filteredItems.length === 0) return null;
 
   return (
-    <div ref={menuRef} style={{
+    <div ref={menuRef} role="listbox" aria-label="Block type menu" style={{
       position: 'fixed',
       left: position.x + 'px',
       top: position.y + 'px',
@@ -86,6 +86,8 @@ export default function SlashMenu({ position, filter, onSelect, onClose }) {
       {displayedItems.map((item, idx) => (
         <div 
           key={item.type}
+          role="option"
+          aria-selected={idx === selectedIndex}
           onClick={() => onSelect(item.type)}
           style={{
             padding: '8px 12px',
