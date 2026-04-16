@@ -12,6 +12,8 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
   const latestUpdatedAtRef = useRef(lastKnownUpdatedAt);
   const dirtyRef = useRef(false);
   const conflictRef = useRef(false);
+  const saveSeqRef = useRef(0);
+  const blocksVersionRef = useRef(0);
 
   const saveWithKeepalive = useCallback(async () => {
     if (!latestDocumentIdRef.current || !latestBlocksRef.current || !dirtyRef.current) return;
@@ -35,10 +37,8 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
   const persistBlocks = useCallback(async () => {
     if (!latestDocumentIdRef.current || !latestBlocksRef.current || !dirtyRef.current) return;
     if (conflictRef.current) return;
-
-    // Snapshot guard: if blocks change while this request is in-flight,
-    // we must NOT clear dirtyRef on success.
-    const snapshotForRequest = lastSnapshotRef.current;
+    const requestSeq = ++saveSeqRef.current;
+    const requestVersion = blocksVersionRef.current;
 
     if (abortRef.current) {
       abortRef.current.abort();
@@ -56,28 +56,29 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
         },
         { signal: controller.signal }
       );
-
-      const shouldClearDirty = lastSnapshotRef.current === snapshotForRequest;
+      // Ignore stale in-flight responses (prevents false 409/conflict UI).
+      if (requestSeq !== saveSeqRef.current) return;
 
       if (data?.updated_at) {
         latestUpdatedAtRef.current = data.updated_at;
         onServerDocumentUpdate?.(data);
       }
 
-      if (shouldClearDirty) {
+      // Only clear "dirty" if nothing changed while this request was in flight.
+      if (requestVersion === blocksVersionRef.current) {
         dirtyRef.current = false;
         setSaveStatus('saved');
         setTimeout(() => {
           setSaveStatus((current) => (current === 'saved' ? 'idle' : current));
         }, 2000);
       } else {
-        // Newer local changes arrived while this save was in-flight.
         setSaveStatus('saving');
       }
     } catch (err) {
       if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
         return;
       }
+      if (requestSeq !== saveSeqRef.current) return;
       if (err.response?.status === 409) {
         conflictRef.current = true;
         setSaveStatus('error');
@@ -106,26 +107,16 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
   useEffect(() => {
     if (!documentId || !blocks) return;
 
-    const snapshot = JSON.stringify(blocks);
-
     if (hydratedDocumentRef.current !== documentId) {
       hydratedDocumentRef.current = documentId;
-      lastSnapshotRef.current = snapshot;
+      lastSnapshotRef.current = JSON.stringify(blocks);
       dirtyRef.current = false;
       setSaveStatus('idle');
       return;
     }
 
-    // Guard against saving initial empty state if it's just a transition
-    if (blocks.length === 0 && lastSnapshotRef.current !== '[]') {
-      return;
-    }
-
-    if (snapshot === lastSnapshotRef.current) {
-      return;
-    }
-
-    lastSnapshotRef.current = snapshot;
+    // Mark dirty on any edit. Avoid JSON-string diffs each keystroke.
+    blocksVersionRef.current += 1;
 
     dirtyRef.current = true;
     setSaveStatus('saving');

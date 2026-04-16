@@ -6,9 +6,11 @@ import SlashMenu from './SlashMenu';
 import { insertAfter, needsRenormalization } from '../../lib/orderIndex';
 import api from '../../lib/api';
 
-export default function BlockEditor({ documentId, initialBlocks, onChange, readOnly }) {
+export default function BlockEditor({ documentId, initialBlocks, onChange, readOnly, hydrateNonce = 0 }) {
   const [blocks, setBlocks] = useState([]);
   const [focusedId, setFocusedId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const selectionAnchorRef = useRef(null);
   
   // Slash menu state
   const [slashState, setSlashState] = useState({ isOpen: false, blockId: null, position: {x:0, y:0}, filter: '', originalText: '' });
@@ -37,13 +39,15 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
   });
 
   useEffect(() => {
-    // Sort initial blocks
-    if (initialBlocks) {
-      const sorted = [...initialBlocks].sort((a,b) => a.order_index - b.order_index);
-      setBlocks(sorted);
-      blocksRef.current = sorted;
-    }
-  }, [initialBlocks]);
+    // Hydrate internal blocks only when the editor is reloaded (NOT on every autosave keystroke)
+    if (!initialBlocks) return;
+    setSelectedIds(new Set());
+    selectionAnchorRef.current = null;
+    setFocusedId(null);
+    const sorted = [...initialBlocks].sort((a,b) => a.order_index - b.order_index);
+    setBlocks(sorted);
+    blocksRef.current = sorted;
+  }, [hydrateNonce, documentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // In BlockEditor.jsx
 useEffect(() => {
@@ -266,6 +270,30 @@ useEffect(() => {
 
     const el = e.target;
 
+    // Ctrl/Cmd+A -> select all blocks
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      const allIds = blocksRef.current.map((b) => b.id);
+      setSelectedIds(new Set(allIds));
+      selectionAnchorRef.current = allIds[0] || null;
+      return;
+    }
+
+    // Escape -> clear selection (and close slash menu if open)
+    if (e.key === 'Escape' && selectedIds.size > 0) {
+      e.preventDefault();
+      setSelectedIds(new Set());
+      if (slashState.isOpen) closeSlashMenu(false);
+      return;
+    }
+
+    // Bulk delete when multi-select is active
+    if ((e.key === 'Backspace' || e.key === 'Delete') && selectedIds.size > 1 && !slashState.isOpen) {
+      e.preventDefault();
+      void deleteSelectedBlocks(Array.from(selectedIds));
+      return;
+    }
+
     // SLASH MENU TRIGGER
     if (e.key === '/') {
        const cursorOffset = getCursorOffset(el);
@@ -353,8 +381,15 @@ useEffect(() => {
       }
 
       const isTodo = currentBlock.type === 'todo';
-      const newBlockType = isTodo ? 'todo' : 'paragraph';
-      const newBlockContent = isTodo ? { text: textAfter, checked: false } : { text: textAfter };
+      const isAtEnd = textAfter === '';
+
+      // Spec: Enter at end of block creates a new paragraph block below.
+      // For todos: only keep todo type when splitting mid-block (textAfter not empty).
+      const newBlockType = isTodo && !isAtEnd ? 'todo' : 'paragraph';
+      const newBlockContent =
+        newBlockType === 'todo'
+          ? { text: textAfter, checked: false }
+          : { text: textAfter };
 
       // Generate order index for new block
       const prevIndex = currentBlock.order_index;
@@ -405,22 +440,9 @@ useEffect(() => {
             return;
          }
 
-         // If the previous block is a non-editable block (divider, image, code),
-         // delete that previous block instead of deleting the current empty paragraph.
-         const prevBlock = blocksRef.current[blockIndex - 1];
-         if (prevBlock && ['divider', 'image', 'code'].includes(prevBlock.type)) {
-           e.preventDefault();
-           try {
-             await api.delete(`/api/blocks/${prevBlock.id}`);
-             const newBlocks = blocksRef.current.filter((b) => b.id !== prevBlock.id);
-             updateBlocksState(newBlocks);
-             // keep focus on the current block (it may have a new index)
-             focusBlock(blockId, 'start');
-           } catch (err) {
-             console.error(err);
-           }
-           return;
-         }
+         // If the previous block is non-editable (divider/image),
+         // cursor can't go "into" it. So we delete the current empty block
+         // and jump to the nearest editable block (handled below).
 
          e.preventDefault();
 
@@ -480,12 +502,95 @@ useEffect(() => {
 
   const handleEditorMouseDown = (e) => {
     if (readOnly) return;
-    if (e.target.closest('.block-content, input, button, img, hr, .doc-menu')) return;
+    if (e.target.closest('.block-wrapper, .block-content, input, button, img, hr, .doc-menu')) return;
+    setSelectedIds(new Set());
 
     const editableBlocks = blocksRef.current.filter((block) => block.type !== 'divider' && block.type !== 'image');
     const lastEditableBlock = editableBlocks[editableBlocks.length - 1];
     if (lastEditableBlock) {
       focusBlock(lastEditableBlock.id, 'end');
+    }
+  };
+
+  const handleBlockPointerDown = (e, id) => {
+    if (readOnly) return;
+    // Keep selection logic from being stomped by editor background mousedown.
+    e.stopPropagation();
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+
+      // Shift-click: select contiguous range
+      if (e.shiftKey) {
+        const anchorId = selectionAnchorRef.current || id;
+        const fromIndex = blocksRef.current.findIndex((b) => b.id === anchorId);
+        const toIndex = blocksRef.current.findIndex((b) => b.id === id);
+        if (fromIndex === -1 || toIndex === -1) {
+          next.clear();
+          next.add(id);
+          selectionAnchorRef.current = id;
+          return next;
+        }
+
+        const start = Math.min(fromIndex, toIndex);
+        const end = Math.max(fromIndex, toIndex);
+        const rangeIds = blocksRef.current.slice(start, end + 1).map((b) => b.id);
+        selectionAnchorRef.current = anchorId;
+        return new Set(rangeIds);
+      }
+
+      // Ctrl/Cmd-click: toggle
+      if (e.metaKey || e.ctrlKey) {
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        selectionAnchorRef.current = id;
+        return next;
+      }
+
+      // Plain click: single select
+      next.clear();
+      next.add(id);
+      selectionAnchorRef.current = id;
+      return next;
+    });
+  };
+
+  const deleteSelectedBlocks = async (idsToDelete) => {
+    if (readOnly) return;
+    if (!idsToDelete || idsToDelete.length <= 1) return;
+
+    const idsSet = new Set(idsToDelete);
+    const prevBlocks = blocksRef.current;
+
+    // Speed: delete in parallel (UI reconciles from local state after)
+    await Promise.all(idsToDelete.map((blockId) => api.delete(`/api/blocks/${blockId}`).catch(() => null)));
+
+    const remaining = prevBlocks.filter((b) => !idsSet.has(b.id));
+    updateBlocksState(remaining);
+    setSelectedIds(new Set());
+
+    if (remaining.length === 0) return;
+
+    // Focus nearest block after deletions.
+    const firstDeletedIndex = prevBlocks.findIndex((b) => idsSet.has(b.id));
+    let target = null;
+    for (let i = firstDeletedIndex; i < prevBlocks.length; i++) {
+      if (!idsSet.has(prevBlocks[i]?.id)) {
+        target = prevBlocks[i];
+        break;
+      }
+    }
+    if (!target) {
+      for (let i = firstDeletedIndex - 1; i >= 0; i--) {
+        if (!idsSet.has(prevBlocks[i]?.id)) {
+          target = prevBlocks[i];
+          break;
+        }
+      }
+    }
+    if (target) {
+      setFocusedId(target.id);
+      focusBlock(target.id, 'start');
     }
   };
 
@@ -517,15 +622,16 @@ useEffect(() => {
      const currentBlock = blocksRef.current.find((block) => block.id === blockId);
      if (!currentBlock) return;
 
-     const originalText = slashState.originalText;
+     // Spec: selecting a slash command must create an empty block.
+     const emptyText = '';
      const nextContent =
        type === 'todo'
-         ? { text: originalText, checked: currentBlock.content?.checked || false }
+        ? { text: emptyText, checked: false }
          : type === 'image'
-           ? { url: currentBlock.content?.url || '' }
+          ? { url: '' }
            : type === 'divider'
              ? {}
-             : { text: originalText };
+            : { text: emptyText };
      
      // Update block type
      try {
@@ -533,6 +639,10 @@ useEffect(() => {
        const newBlocks = blocksRef.current.map(b => b.id === blockId ? data : b);
        updateBlocksState(newBlocks);
        setSlashState({ isOpen: false, blockId: null, position: {x:0, y:0}, filter: '', originalText: '' });
+
+       // Clear any stray DOM text that might have been inserted.
+       const el = document.querySelector(`.block-wrapper[data-id="${blockId}"] .block-content`);
+       if (el) el.innerText = '';
 
        if (type === 'divider') {
          const index = newBlocks.findIndex(b => b.id === blockId);
@@ -566,11 +676,18 @@ useEffect(() => {
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
           {blocks.map(block => (
-            <div key={block.id} className="block-wrapper" data-id={block.id}>
+            <div
+              key={block.id}
+              className="block-wrapper"
+              data-id={block.id}
+              onMouseDown={(e) => handleBlockPointerDown(e, block.id)}
+            >
               <Block 
                 block={block}
                 readOnly={readOnly}
                 focused={focusedId === block.id}
+                selected={selectedIds.has(block.id)}
+                slashActive={slashState.isOpen && slashState.blockId === block.id}
                 onFocus={handleBlockFocus}
                 onBlur={handleBlockBlur}
                 onKeyDown={handleKeyDown}

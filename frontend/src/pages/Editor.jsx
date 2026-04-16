@@ -9,6 +9,7 @@ import { useAutoSave } from '../hooks/useAutoSave';
 export default function Editor({ documentId, onTitleChange }) {
   const [doc, setDoc] = useState(null);
   const [blocks, setBlocks] = useState([]);
+  const [hydrateNonce, setHydrateNonce] = useState(0);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editorNotice, setEditorNotice] = useState('');
@@ -44,6 +45,7 @@ export default function Editor({ documentId, onTitleChange }) {
       const { data } = await api.get(`/api/documents/${documentId}`);
       setDoc(data.document);
       setBlocks(data.blocks);
+      setHydrateNonce((n) => n + 1);
       setEditorNotice('');
     } catch (err) {
       console.error(err);
@@ -181,6 +183,7 @@ export default function Editor({ documentId, onTitleChange }) {
               initialBlocks={blocks} 
               onChange={setBlocks} 
               readOnly={false} 
+              hydrateNonce={hydrateNonce}
             />
           </div>
         </div>

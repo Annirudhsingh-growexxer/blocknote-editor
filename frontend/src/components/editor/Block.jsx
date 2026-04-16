@@ -1,11 +1,11 @@
-import React, { useRef, useEffect, useState, useLayoutEffect } from 'react';
+import React, { useRef, useEffect, useState, useLayoutEffect, memo } from 'react';
 import DragHandle from './DragHandle';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 function Block({ 
   block, readOnly, onUpdate, onKeyDown, onPaste, onTypeChange, onImageSet, 
-  focused, onFocus, onBlur 
+  focused, selected, slashActive, onFocus, onBlur 
 }) {
   const contentRef = useRef(null);
   const { id, type, content } = block;
@@ -78,7 +78,7 @@ function Block({
           display: 'flex',
           alignItems: type === 'todo' ? 'flex-start' : 'center',
           transition: 'border var(--t-fast)',
-          borderLeft: focused && !readOnly ? '2px solid var(--accent-dim)' : '2px solid transparent',
+          borderLeft: (focused || (selected && !readOnly)) ? '2px solid var(--accent-dim)' : '2px solid transparent',
           paddingLeft: '6px',
           marginLeft: '-8px'
       }}>
@@ -222,4 +222,12 @@ function Block({
   );
 }
 
-export default Block;
+export default memo(Block, (prev, next) => {
+  return (
+    prev.block === next.block &&
+    prev.readOnly === next.readOnly &&
+    prev.focused === next.focused &&
+    prev.selected === next.selected &&
+    prev.slashActive === next.slashActive
+  );
+});
