@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Share2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Share2, Pencil } from 'lucide-react';
 import api from '../lib/api';
 import BlockEditor from '../components/editor/BlockEditor';
 import SaveIndicator from '../components/ui/SaveIndicator';
@@ -10,6 +10,8 @@ export default function Editor({ documentId, onTitleChange }) {
   const [doc, setDoc] = useState(null);
   const [blocks, setBlocks] = useState([]);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const titleRef = useRef(null);
   
   const { saveStatus } = useAutoSave(documentId, blocks);
 
@@ -28,16 +30,31 @@ export default function Editor({ documentId, onTitleChange }) {
   };
 
   const handleTitleBlur = async (e) => {
-    const newTitle = e.target.textContent || 'Untitled';
+    setEditingTitle(false);
+    const newTitle = e.target.textContent.trim() || 'Untitled';
     if (newTitle !== doc.title) {
       setDoc({ ...doc, title: newTitle });
       onTitleChange(documentId, newTitle);
       try {
         await api.patch(`/api/documents/${documentId}`, { title: newTitle });
       } catch (err) {
-         console.error(err);
+        console.error(err);
       }
     }
+  };
+
+  const startEditingTitle = () => {
+    setEditingTitle(true);
+    requestAnimationFrame(() => {
+      if (titleRef.current) {
+        titleRef.current.focus();
+        const range = document.createRange();
+        range.selectNodeContents(titleRef.current);
+        range.collapse(false);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+      }
+    });
   };
 
   if (!doc) return <div style={{ color: 'var(--text-muted)' }}>Loading...</div>;
@@ -49,22 +66,35 @@ export default function Editor({ documentId, onTitleChange }) {
         borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center',
         padding: '12px 24px', justifyContent: 'space-between'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <h1 
-            contentEditable 
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h1
+            ref={titleRef}
+            contentEditable={editingTitle}
             suppressContentEditableWarning
             role="textbox"
             aria-label="Document title"
             aria-multiline="false"
             onBlur={handleTitleBlur}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }}
-            style={{ 
+            style={{
               fontFamily: 'var(--font-display)', color: 'var(--text-primary)',
-              fontSize: '1.2rem', outline: 'none', cursor: 'text'
+              fontSize: '1.2rem', outline: 'none',
+              cursor: editingTitle ? 'text' : 'default',
+              borderBottom: editingTitle ? '1px solid var(--border-active)' : '1px solid transparent',
+              paddingBottom: '2px', transition: 'border-color var(--t-fast)'
             }}
           >
             {doc.title}
           </h1>
+          {!editingTitle && (
+            <button
+              onClick={startEditingTitle}
+              aria-label="Edit title"
+              style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: '2px' }}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', position: 'relative' }}>
