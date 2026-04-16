@@ -83,86 +83,148 @@ export default function Home() {
 
       <section className="showcase-section">
         <div className="showcase-copy">
-          <p className="showcase-label">Secure task management for teams</p>
-          <h2 className="showcase-heading">Work on big ideas, without the busywork.</h2>
+          <p className="showcase-label">Everything a modern editor needs</p>
+          <h2 className="showcase-heading">Write, organise, and share — all in one place.</h2>
           <p className="showcase-description">
-            From the small stuff to the big picture, BlockNote organizes work so teams know what to do, why it matters, and how to get it done.
+            Block-based writing, instant slash commands, auto-saved drafts, and one-click public sharing. BlockNote keeps your ideas structured from the first keystroke.
           </p>
         </div>
 
         <div className="showcase-panels">
+
+          {/* Panel 1 — Block Editor */}
           <article className="showcase-panel panel-pink">
-            <div className="panel-heading">On going Project</div>
-            <div className="panel-avatar-row">
-              <span className="panel-avatar">B</span>
-              <div className="panel-line-group">
-                <span className="panel-line panel-line-short"></span>
-                <span className="panel-line panel-line-long"></span>
-              </div>
+            <div className="panel-heading">Block Editor</div>
+
+            {/* Fake heading block */}
+            <div className="bn-block-row">
+              <span className="bn-block-type-tag">H1</span>
+              <span className="bn-block-text bn-block-text-heading">Product Roadmap</span>
             </div>
-            <ul className="panel-list">
-              <li>New Brand</li>
-              <li>Product Road Map</li>
-            </ul>
-            <div className="panel-line-group panel-line-group-compact">
-              <span className="panel-line"></span>
-              <span className="panel-line panel-line-short"></span>
+
+            {/* Fake paragraph block */}
+            <div className="bn-block-row">
+              <span className="bn-block-type-tag">¶</span>
+              <span className="bn-block-text">Outline the key milestones and deliverables for Q3. Keep each goal measurable and time-boxed.</span>
             </div>
+
+            {/* Fake todo blocks */}
+            <div className="bn-block-row">
+              <span className="bn-block-type-tag">☑</span>
+              <span className="bn-block-text"><span className="bn-todo-check bn-todo-done">✓</span> Define MVP scope</span>
+            </div>
+            <div className="bn-block-row">
+              <span className="bn-block-type-tag">☑</span>
+              <span className="bn-block-text"><span className="bn-todo-check">○</span> Design block editor UX</span>
+            </div>
+            <div className="bn-block-row">
+              <span className="bn-block-type-tag">☑</span>
+              <span className="bn-block-text"><span className="bn-todo-check">○</span> Ship public share links</span>
+            </div>
+
+            {/* Fake slash hint */}
+            <div className="bn-slash-hint">Type <kbd>/</kbd> for headings, todos, code &amp; more</div>
           </article>
 
+          {/* Panel 2 — Auto-Save & Documents */}
           <article className="showcase-panel panel-yellow">
-            <div className="panel-heading">Daily Activity</div>
-            <div className="task-list">
-              <div className="task-row">
-                <span className="task-dot filled"></span>
-                <span>Review meeting notes</span>
+            <div className="panel-heading">Auto-Save</div>
+
+            {/* Fake save indicator */}
+            <div className="bn-save-row">
+              <span className="bn-save-dot bn-save-dot-saved"></span>
+              <span className="bn-save-label">All changes saved</span>
+              <span className="bn-save-time">just now</span>
+            </div>
+
+            {/* Fake document list */}
+            <div className="bn-doc-list">
+              <div className="bn-doc-item bn-doc-active">
+                <span className="bn-doc-icon">📄</span>
+                <div className="bn-doc-info">
+                  <span className="bn-doc-title">Product Roadmap</span>
+                  <span className="bn-doc-meta">Editing now</span>
+                </div>
+                <span className="bn-doc-badge">Saved</span>
               </div>
-              <div className="task-row">
-                <span className="task-dot filled"></span>
-                <span>Plan next launch</span>
+              <div className="bn-doc-item">
+                <span className="bn-doc-icon">📄</span>
+                <div className="bn-doc-info">
+                  <span className="bn-doc-title">Meeting Notes — Apr 15</span>
+                  <span className="bn-doc-meta">2 hours ago</span>
+                </div>
               </div>
-              <div className="task-row">
-                <span className="task-dot"></span>
-                <span>Share updates with team</span>
+              <div className="bn-doc-item">
+                <span className="bn-doc-icon">📄</span>
+                <div className="bn-doc-info">
+                  <span className="bn-doc-title">Design System Draft</span>
+                  <span className="bn-doc-meta">yesterday</span>
+                </div>
+              </div>
+              <div className="bn-doc-item">
+                <span className="bn-doc-icon">📄</span>
+                <div className="bn-doc-info">
+                  <span className="bn-doc-title">Sprint Retrospective</span>
+                  <span className="bn-doc-meta">3 days ago</span>
+                </div>
               </div>
             </div>
+
+            <div className="bn-slash-hint" style={{ color: 'rgba(0,0,0,0.55)' }}>Saves 1 s after you stop typing. No manual save needed.</div>
           </article>
 
+          {/* Panel 3 — Read-only Share */}
           <article className="showcase-panel panel-purple">
-            <div className="panel-heading">Live Conversation</div>
-            <div className="chat-row">
-              <span className="panel-avatar">A</span>
-              <div className="chat-block">
-                <span className="chat-line"></span>
-                <span className="chat-line chat-line-short"></span>
+            <div className="panel-heading">Public Share</div>
+
+            {/* Fake share modal */}
+            <div className="bn-share-box">
+              <div className="bn-share-row">
+                <span className="bn-share-icon">🔗</span>
+                <div className="bn-share-info">
+                  <span className="bn-share-title">Share link active</span>
+                  <span className="bn-share-url">blocknote.app/share/a3f9…</span>
+                </div>
+                <span className="bn-share-active-dot"></span>
               </div>
+              <div className="bn-share-pill">👁 View only — no login needed</div>
             </div>
-            <div className="chat-row">
-              <span className="panel-avatar">C</span>
-              <div className="chat-block">
-                <span className="chat-line"></span>
-                <span className="chat-line chat-line-short"></span>
+
+            {/* Fake read-only document preview */}
+            <div className="bn-ro-preview">
+              <div className="bn-ro-header">
+                <span className="bn-ro-logo">BlockNote</span>
+                <span className="bn-ro-badge">View only</span>
               </div>
+              <div className="bn-ro-title">Product Roadmap</div>
+              <div className="bn-ro-line"></div>
+              <div className="bn-ro-line bn-ro-line-med"></div>
+              <div className="bn-ro-line bn-ro-line-short"></div>
+              <div className="bn-ro-line"></div>
+              <div className="bn-ro-line bn-ro-line-med"></div>
             </div>
+
+            <div className="bn-slash-hint">Anyone with the link can read. Only you can edit.</div>
           </article>
+
         </div>
 
         <div className="showcase-metrics">
           <div className="metric-item">
-            <strong>Secure</strong>
-            <span>and compliant</span>
+            <strong>Block-based</strong>
+            <span>structured writing</span>
           </div>
           <div className="metric-item">
-            <strong>4 Million</strong>
-            <span>and compliant</span>
+            <strong>Auto-saved</strong>
+            <span>1 s after typing stops</span>
           </div>
           <div className="metric-item">
-            <strong>Editor's Choice</strong>
-            <span>iOS App Store</span>
+            <strong>Slash commands</strong>
+            <span>7 block types</span>
           </div>
           <div className="metric-item">
-            <strong>4.7 Stars</strong>
-            <span>Google Play Store</span>
+            <strong>Public share</strong>
+            <span>read-only link, no login</span>
           </div>
         </div>
       </section>

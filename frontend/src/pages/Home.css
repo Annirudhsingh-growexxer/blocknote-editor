@@ -458,6 +458,302 @@
   background: linear-gradient(180deg, #7f6bff 0%, #5f55ff 100%);
 }
 
+/* ── BlockNote Panel UI elements ── */
+
+/* Panel 1 – Block editor */
+.bn-block-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  z-index: 2;
+}
+
+.bn-block-type-tag {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bn-block-text {
+  color: rgba(255,255,255,0.92);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bn-block-text-heading {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bn-todo-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid rgba(255,255,255,0.7);
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.8);
+  flex-shrink: 0;
+}
+
+.bn-todo-done {
+  background: rgba(255,255,255,0.9);
+  border-color: transparent;
+  color: #ff5e97;
+  font-weight: 900;
+}
+
+.bn-slash-hint {
+  margin-top: auto;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.12);
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.75);
+  z-index: 2;
+}
+
+.bn-slash-hint kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.25);
+  border: 1px solid rgba(255,255,255,0.3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: #fff;
+}
+
+/* Panel 2 – Auto-Save */
+.bn-save-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0,0,0,0.08);
+  border-radius: 10px;
+  padding: 10px 14px;
+  z-index: 2;
+}
+
+.bn-save-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.2);
+}
+
+.bn-save-dot-saved {
+  background: #2ecc71;
+  box-shadow: 0 0 0 3px rgba(46,204,113,0.3);
+  animation: pulse-save 2s ease-in-out infinite;
+}
+
+@keyframes pulse-save {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(46,204,113,0.3); }
+  50%       { box-shadow: 0 0 0 6px rgba(46,204,113,0.1); }
+}
+
+.bn-save-label {
+  flex: 1;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(0,0,0,0.7);
+}
+
+.bn-save-time {
+  font-size: 0.75rem;
+  color: rgba(0,0,0,0.45);
+}
+
+.bn-doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 2;
+}
+
+.bn-doc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.25);
+}
+
+.bn-doc-item.bn-doc-active {
+  background: rgba(255,255,255,0.55);
+}
+
+.bn-doc-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.bn-doc-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bn-doc-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(0,0,0,0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bn-doc-meta {
+  font-size: 0.7rem;
+  color: rgba(0,0,0,0.45);
+}
+
+.bn-doc-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #2ecc71;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+/* Panel 3 – Public Share */
+.bn-share-box {
+  background: rgba(255,255,255,0.13);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 2;
+}
+
+.bn-share-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bn-share-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.bn-share-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bn-share-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bn-share-url {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.65);
+  font-family: var(--font-mono);
+}
+
+.bn-share-active-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2ecc71;
+  box-shadow: 0 0 0 3px rgba(46,204,113,0.35);
+  flex-shrink: 0;
+  animation: pulse-save 2s ease-in-out infinite;
+}
+
+.bn-share-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.18);
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.9);
+  font-weight: 600;
+}
+
+.bn-ro-preview {
+  flex: 1;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  z-index: 2;
+}
+
+.bn-ro-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.bn-ro-logo {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-style: italic;
+  color: rgba(255,255,255,0.8);
+}
+
+.bn-ro-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.85);
+}
+
+.bn-ro-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bn-ro-line {
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.22);
+}
+
+.bn-ro-line-med  { width: 72%; }
+.bn-ro-line-short { width: 48%; }
+
+/* ── end panel UI ── */
+
 .showcase-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
