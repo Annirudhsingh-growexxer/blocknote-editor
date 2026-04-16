@@ -6,6 +6,48 @@ const { validateBlockContent, validateBlockType } = require('../lib/validators')
 
 const router = express.Router();
 
+const ALLOWED_BLOCK_TYPES = new Set([
+  'paragraph',
+  'heading_1',
+  'heading_2',
+  'todo',
+  'code',
+  'divider',
+  'image',
+]);
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value) {
+  return typeof value === 'string' && UUID_REGEX.test(value);
+}
+
+function validateBlockContent(content) {
+  if (content === undefined || content === null) return null;
+  if (typeof content !== 'object' || Array.isArray(content)) return 'Invalid block content';
+
+  if ('text' in content) {
+    if (typeof content.text !== 'string') return 'Invalid block text';
+    if (content.text.length > 50000) return 'Content text too long';
+  }
+
+  if ('url' in content) {
+    if (typeof content.url !== 'string') return 'Invalid image URL';
+    if (content.url.length > 2000) return 'Image URL too long';
+  }
+
+  if ('checked' in content) {
+    if (typeof content.checked !== 'boolean') return 'Invalid todo checked value';
+  }
+
+  return null;
+}
+
+function validateBlockType(type) {
+  if (!ALLOWED_BLOCK_TYPES.has(type)) return 'Invalid block type';
+  return null;
+}
+
 
 router.use(rejectSharedWrites);
 router.use(authMiddleware);
@@ -33,7 +75,8 @@ async function verifyDocumentOwnership(docId, userId) {
   const result = await db.query(
     'SELECT user_id FROM documents WHERE id = $1', [docId]
   );
-  return result.rows[0] && result.rows[0].user_id === userId;
+  if (!result.rows[0]) return { found: false, owned: false };
+  return { found: true, owned: result.rows[0].user_id === userId };
 }
 
 async function touchDocument(documentId) {
@@ -42,9 +85,16 @@ async function touchDocument(documentId) {
 
 router.post('/', async (req, res) => {
   try {
-    const { document_id, type, content, order_index, parent_id } = req.body;
+    const { document_id, type, content, order_index, parent_id } = req.body || {};
 
-    const blockType = type || 'paragraph';
+    if (!isUuid(document_id)) {
+      return res.status(422).json({ error: 'Invalid or missing document_id' });
+    }
+
+    const blockType = type === undefined ? 'paragraph' : type;
+    if (typeof blockType !== 'string') {
+      return res.status(422).json({ error: 'Invalid block type' });
+    }
     const typeError = validateBlockType(blockType);
     if (typeError) return res.status(422).json({ error: typeError });
 
@@ -52,11 +102,16 @@ router.post('/', async (req, res) => {
       return res.status(422).json({ error: 'Invalid order_index' });
     }
 
+    if (parent_id !== undefined && parent_id !== null && !isUuid(parent_id)) {
+      return res.status(422).json({ error: 'Invalid parent_id' });
+    }
+
     const contentError = validateBlockContent(content);
     if (contentError) return res.status(422).json({ error: contentError });
-    
-    const isOwner = await verifyDocumentOwnership(document_id, req.user.id);
-    if (!isOwner) return res.status(403).json({ error: 'Forbidden' });
+
+    const { found, owned } = await verifyDocumentOwnership(document_id, req.user.id);
+    if (!found) return res.status(404).json({ error: 'Document not found' });
+    if (!owned) return res.status(403).json({ error: 'Forbidden' });
 
     const result = await db.query(
       'INSERT INTO blocks (document_id, type, content, order_index, parent_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
@@ -65,7 +120,7 @@ router.post('/', async (req, res) => {
 
     await touchDocument(document_id);
 
-    res.json(result.rows[0]);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
@@ -73,33 +128,56 @@ router.post('/', async (req, res) => {
 });
 
 router.post('/bulk', async (req, res) => {
+  let transactionStarted = false;
   try {
-    const { document_id, blocks } = req.body;
+    const { document_id, blocks } = req.body || {};
+
+    if (!isUuid(document_id)) {
+      return res.status(422).json({ error: 'Invalid or missing document_id' });
+    }
+
     if (!Array.isArray(blocks) || blocks.length === 0) {
       return res.status(400).json({ error: 'blocks array is required' });
     }
 
-    const isOwner = await verifyDocumentOwnership(document_id, req.user.id);
-    if (!isOwner) return res.status(403).json({ error: 'Forbidden' });
-
     for (const block of blocks) {
-      const blockType = block?.type || 'paragraph';
+      if (!block || typeof block !== 'object' || Array.isArray(block)) {
+        return res.status(422).json({ error: 'Invalid block payload' });
+      }
+
+      const blockType = block.type === undefined ? 'paragraph' : block.type;
+      if (typeof blockType !== 'string') {
+        return res.status(422).json({ error: 'Invalid block type' });
+      }
       const typeError = validateBlockType(blockType);
       if (typeError) return res.status(422).json({ error: typeError });
 
-      if (typeof block?.order_index !== 'number' || !Number.isFinite(block.order_index)) {
+      if (typeof block.order_index !== 'number' || !Number.isFinite(block.order_index)) {
         return res.status(422).json({ error: 'Invalid order_index' });
+      }
+
+      if (
+        block.parent_id !== undefined &&
+        block.parent_id !== null &&
+        !isUuid(block.parent_id)
+      ) {
+        return res.status(422).json({ error: 'Invalid parent_id' });
       }
 
       const contentError = validateBlockContent(block.content);
       if (contentError) return res.status(422).json({ error: contentError });
     }
 
+    const { found, owned } = await verifyDocumentOwnership(document_id, req.user.id);
+    if (!found) return res.status(404).json({ error: 'Document not found' });
+    if (!owned) return res.status(403).json({ error: 'Forbidden' });
+
     await db.query('BEGIN');
+    transactionStarted = true;
     const inserted = [];
 
     for (const block of blocks) {
-      const blockType = block?.type || 'paragraph';
+      const blockType = block.type || 'paragraph';
       const result = await db.query(
         'INSERT INTO blocks (document_id, type, content, order_index, parent_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
         [
@@ -115,25 +193,36 @@ router.post('/bulk', async (req, res) => {
 
     await touchDocument(document_id);
     await db.query('COMMIT');
+    transactionStarted = false;
 
-    res.json(inserted);
+    res.status(201).json(inserted);
   } catch (err) {
-    await db.query('ROLLBACK');
+    if (transactionStarted) {
+      try { await db.query('ROLLBACK'); } catch (_) { /* ignore rollback errors */ }
+    }
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 router.patch('/reorder', async (req, res) => {
+  let transactionStarted = false;
   try {
-    const { updates } = req.body; // [{ id, order_index }]
-    if (!updates || updates.length === 0) return res.json({ success: true });
+    const { updates } = (req.body || {}); // [{ id, order_index }]
+
+    if (updates === undefined || updates === null) {
+      return res.status(422).json({ error: 'updates array is required' });
+    }
+    if (!Array.isArray(updates)) {
+      return res.status(422).json({ error: 'updates must be an array' });
+    }
+    if (updates.length === 0) return res.json({ success: true });
 
     for (const update of updates) {
-      if (!update || typeof update !== 'object') {
+      if (!update || typeof update !== 'object' || Array.isArray(update)) {
         return res.status(422).json({ error: 'Invalid update payload' });
       }
-      if (!update.id || typeof update.id !== 'string') {
+      if (!isUuid(update.id)) {
         return res.status(422).json({ error: 'Invalid block id' });
       }
       if (typeof update.order_index !== 'number' || !Number.isFinite(update.order_index)) {
@@ -165,7 +254,8 @@ router.patch('/reorder', async (req, res) => {
     }
 
     await db.query('BEGIN');
-    
+    transactionStarted = true;
+
     for (const update of updates) {
       await db.query('UPDATE blocks SET order_index = $1 WHERE id = $2', [update.order_index, update.id]);
     }
@@ -192,9 +282,12 @@ router.patch('/reorder', async (req, res) => {
     }
 
     await db.query('COMMIT');
+    transactionStarted = false;
     res.json({ success: true });
   } catch (err) {
-    await db.query('ROLLBACK');
+    if (transactionStarted) {
+      try { await db.query('ROLLBACK'); } catch (_) { /* ignore rollback errors */ }
+    }
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -202,12 +295,19 @@ router.patch('/reorder', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   try {
+    if (!isUuid(req.params.id)) {
+      return res.status(422).json({ error: 'Invalid block id' });
+    }
+
     const blockData = await assertBlockBelongsToUser(req.params.id, req.user.id, res);
     if (!blockData) return;
 
-    const { type, content, order_index } = req.body;
+    const { type, content, order_index } = req.body || {};
 
     if (type !== undefined) {
+      if (typeof type !== 'string') {
+        return res.status(422).json({ error: 'Invalid block type' });
+      }
       const typeError = validateBlockType(type);
       if (typeError) return res.status(422).json({ error: typeError });
     }
@@ -237,7 +337,9 @@ router.patch('/:id', async (req, res) => {
       values.push(order_index);
     }
 
-    if (updates.length === 0) return res.json({});
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No updatable fields provided' });
+    }
 
     values.push(req.params.id);
     const result = await db.query(
@@ -254,6 +356,10 @@ router.patch('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
+    if (!isUuid(req.params.id)) {
+      return res.status(422).json({ error: 'Invalid block id' });
+    }
+
     const blockData = await assertBlockBelongsToUser(req.params.id, req.user.id, res);
     if (!blockData) return;
 
