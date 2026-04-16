@@ -1,16 +1,12 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Bold, Italic, Underline, Strikethrough, Code } from 'lucide-react';
+import { Underline, Strikethrough, Code } from 'lucide-react';
 
-// Notion-style floating format toolbar. Appears above the current text
-// selection inside an editable block and applies inline formatting via
-// document.execCommand. The toolbar itself is non-focusable (mousedown is
-// suppressed) so clicking a button never steals the selection.
 const COMMANDS = [
-  { id: 'bold',          label: 'Bold',          shortcut: 'Ctrl+B', Icon: Bold },
-  { id: 'italic',        label: 'Italic',        shortcut: 'Ctrl+I', Icon: Italic },
-  { id: 'underline',     label: 'Underline',     shortcut: 'Ctrl+U', Icon: Underline },
-  { id: 'strikeThrough', label: 'Strikethrough', shortcut: '',       Icon: Strikethrough },
-  { id: 'code',          label: 'Code',          shortcut: '',       Icon: Code, custom: true },
+  { id: 'bold',          label: 'B',  ariaLabel: 'Bold',          shortcut: 'Ctrl+B', style: { fontWeight: 700, fontSize: '15px' } },
+  { id: 'italic',        label: 'I',  ariaLabel: 'Italic',        shortcut: 'Ctrl+I', style: { fontStyle: 'italic', fontSize: '15px' } },
+  { id: 'underline',     label: null, ariaLabel: 'Underline',     shortcut: 'Ctrl+U', Icon: Underline },
+  { id: 'strikeThrough', label: null, ariaLabel: 'Strikethrough', shortcut: '',       Icon: Strikethrough },
+  { id: 'code',          label: null, ariaLabel: 'Code',          shortcut: '',       Icon: Code, custom: true },
 ];
 
 // Returns the <code>-ness of the current selection. execCommand doesn't have
@@ -121,7 +117,7 @@ export default function FormatToolbar({ rect, editorRootRef, onAfterCommand }) {
         display: 'flex',
         alignItems: 'stretch',
         gap: 0,
-        padding: '2px',
+        padding: '3px',
         background: 'var(--bg-elevated)',
         border: '1px solid var(--border-default)',
         borderRadius: '8px',
@@ -145,19 +141,21 @@ export default function FormatToolbar({ rect, editorRootRef, onAfterCommand }) {
             <button
               type="button"
               onClick={() => runCommand(cmd)}
-              aria-label={cmd.label}
+              aria-label={cmd.ariaLabel}
               aria-pressed={active}
-              title={cmd.shortcut ? `${cmd.label} (${cmd.shortcut})` : cmd.label}
+              title={cmd.shortcut ? `${cmd.ariaLabel} (${cmd.shortcut})` : cmd.ariaLabel}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: '30px',
-                height: '30px',
+                width: '36px',
+                height: '32px',
                 borderRadius: '6px',
                 color: active ? 'var(--accent)' : 'var(--text-secondary)',
                 background: active ? 'var(--accent-dim)' : 'transparent',
                 transition: 'background var(--t-fast), color var(--t-fast)',
+                fontFamily: 'var(--font-ui)',
+                ...(cmd.style || {}),
               }}
               onMouseEnter={(e) => {
                 if (!active) e.currentTarget.style.background = 'var(--bg-overlay)';
@@ -166,7 +164,7 @@ export default function FormatToolbar({ rect, editorRootRef, onAfterCommand }) {
                 if (!active) e.currentTarget.style.background = 'transparent';
               }}
             >
-              <cmd.Icon size={15} strokeWidth={2.25} />
+              {cmd.Icon ? <cmd.Icon size={15} strokeWidth={2.25} /> : cmd.label}
             </button>
           </React.Fragment>
         );

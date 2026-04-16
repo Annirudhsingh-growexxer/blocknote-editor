@@ -149,9 +149,13 @@ function Block({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {!readOnly && isHovered && <DragHandle id={id} />}
-      {!readOnly && (focused || isHovered) && type !== 'divider' && type !== 'image' && (
-        <div style={{ position: 'absolute', left: '-4px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}>
+      {!readOnly && focused && type !== 'divider' && type !== 'image' && (
+        <div style={{
+          position: 'absolute', left: '-20px', top: '50%', transform: 'translateY(-50%)',
+          zIndex: 10, display: 'flex', alignItems: 'center', gap: '3px', justifyContent: 'center'
+        }}>
+          <DragHandle listeners={listeners} attributes={attributes} isDragging={isDragging} />
+          {focused && (
           <button
             ref={formatBtnRef}
             onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFormatMenu((v) => !v); setActiveTab('text'); }}
@@ -163,8 +167,10 @@ function Block({
               color: formatMenu ? 'var(--text-inverse)' : 'var(--text-muted)',
               fontSize: '14px', lineHeight: 1, display: 'flex', alignItems: 'center',
               justifyContent: 'center', cursor: 'pointer',
+              marginRight: '8px'
             }}
           >+</button>
+          )}
 
           {formatMenu && (
             <div
