@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Check, X, LogOut } from 'lucide-react';
+import { Plus, Trash2, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
+import ConfirmModal from '../ui/ConfirmModal';
 
 export default function Sidebar({ documents, loading, onCreate, activeDocId, onSelect, onDelete }) {
   const navigate = useNavigate();
   const [hoveredId, setHoveredId] = useState(null);
-  const [confirmingId, setConfirmingId] = useState(null);
+  const [deletingDoc, setDeletingDoc] = useState(null);
+  const [deletePhase, setDeletePhase] = useState('confirm');
 
   const handleLogout = async () => {
     try {
@@ -40,9 +42,9 @@ export default function Sidebar({ documents, loading, onCreate, activeDocId, onS
       flexShrink: 0
     }}>
       <div style={{ padding: '24px 16px 16px' }}>
-        <h2 style={{
+        <h2 onClick={() => navigate('/')} style={{
           fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 600,
-          color: 'var(--text-primary)', marginBottom: '24px'
+          color: 'var(--text-primary)', marginBottom: '24px', cursor: 'pointer'
         }}>BlockNote</h2>
         
         <button onClick={onCreate} disabled={loading} style={{
@@ -68,14 +70,8 @@ export default function Sidebar({ documents, loading, onCreate, activeDocId, onS
           <div
             key={doc.id}
             onMouseEnter={() => setHoveredId(doc.id)}
-            onMouseLeave={() => {
-              setHoveredId(null);
-              setConfirmingId(null);
-            }}
-            onClick={() => {
-              if (confirmingId) return;
-              onSelect(doc.id);
-            }}
+            onMouseLeave={() => setHoveredId(null)}
+            onClick={() => onSelect(doc.id)}
             style={{
               padding: '8px 12px', margin: '2px 0', borderRadius: 'var(--radius-sm)',
               cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -92,28 +88,11 @@ export default function Sidebar({ documents, loading, onCreate, activeDocId, onS
               </div>
             </div>
 
-            {confirmingId === doc.id ? (
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onDelete(doc.id); setConfirmingId(null); }}
-                  style={{ color: 'var(--error)', padding: '2px' }}
-                  aria-label="Confirm delete"
-                >
-                  <Check size={14} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setConfirmingId(null); }}
-                  style={{ color: 'var(--text-secondary)', padding: '2px' }}
-                  aria-label="Cancel delete"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ) : hoveredId === doc.id && (
+            {hoveredId === doc.id && (
               <div
                 className="doc-menu"
                 style={{ display: 'flex' }}
-                onClick={e => { e.stopPropagation(); setConfirmingId(doc.id); }}
+                onClick={e => { e.stopPropagation(); setDeletingDoc(doc); setDeletePhase('confirm'); }}
                 aria-label="Delete document"
               >
                 <Trash2 size={14} color="var(--text-muted)" />
@@ -122,6 +101,26 @@ export default function Sidebar({ documents, loading, onCreate, activeDocId, onS
           </div>
         ))}
       </div>
+
+      {deletingDoc && (
+        <ConfirmModal
+          phase={deletePhase}
+          title="Delete Document"
+          description={<>Are you sure you want to delete <strong style={{ color: 'var(--text-primary)' }}>{deletingDoc.title}</strong>? This action cannot be undone.</>}
+          confirmLabel="Delete"
+          successMessage="Document deleted successfully."
+          errorMessage="Failed to delete the document. Please try again."
+          onConfirm={async () => {
+            try {
+              await onDelete(deletingDoc.id);
+              setDeletePhase('success');
+            } catch {
+              setDeletePhase('error');
+            }
+          }}
+          onClose={() => { setDeletingDoc(null); setDeletePhase('confirm'); }}
+        />
+      )}
 
       <div style={{ padding: '16px', borderTop: '1px solid var(--border-subtle)' }}>
         <button onClick={handleLogout} style={{
