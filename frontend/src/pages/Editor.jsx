@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Share2, Pencil, PanelLeft } from 'lucide-react';
 import api from '../lib/api';
 import BlockEditor from '../components/editor/BlockEditor';
