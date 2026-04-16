@@ -30,10 +30,8 @@ export default function Block({
 
   useLayoutEffect(() => {
     if (!contentRef.current) return;
-
     const nextText = content?.text || '';
     const isFocused = document.activeElement === contentRef.current;
-
     if (!isFocused && contentRef.current.innerText !== nextText) {
       contentRef.current.innerText = nextText;
     }
@@ -199,7 +197,7 @@ export default function Block({
               } : type === 'code' ? {
                 fontFamily: 'var(--font-mono)', fontSize: '0.875rem', background: 'var(--bg-overlay)',
                 border: '1px solid var(--border-subtle)', padding: '12px 16px', borderRadius: 'var(--radius-md)',
-                color: '#a8d8b0', whiteSpace: 'pre-wrap'
+                color: '#a8d8b0', whiteSpace: 'pre-wrap', lineHeight: 1.6, minHeight: '2.6em'
               } : type === 'todo' ? {
                 fontFamily: 'var(--font-ui)', color: content.checked ? 'var(--text-muted)' : 'var(--text-primary)',
                 textDecoration: content.checked ? 'line-through' : 'none', whiteSpace: 'pre-wrap'
