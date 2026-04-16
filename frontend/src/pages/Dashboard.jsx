@@ -3,10 +3,25 @@ import Sidebar from '../components/layout/Sidebar';
 import api from '../lib/api';
 import Editor from './Editor';
 
+const SIDEBAR_BREAKPOINT = 768;
+
 export default function Dashboard() {
   const [documents, setDocuments] = useState([]);
   const [activeDocId, setActiveDocId] = useState(() => localStorage.getItem('activeDocumentId'));
   const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= SIDEBAR_BREAKPOINT
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < SIDEBAR_BREAKPOINT) {
+        setSidebarOpen((open) => (open ? false : open));
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     fetchDocuments();
@@ -62,24 +77,36 @@ export default function Dashboard() {
     setDocuments(documents.map(d => d.id === id ? { ...d, title: newTitle } : d));
   };
 
+  const toggleSidebar = () => setSidebarOpen((open) => !open);
+
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-base)' }}>
-      <Sidebar 
-        documents={documents} 
-        loading={loading}
-        onCreate={handleCreate} 
-        activeDocId={activeDocId} 
-        onSelect={setActiveDocId} 
-        onDelete={handleDelete}
-      />
-      
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      {sidebarOpen && (
+        <Sidebar
+          documents={documents}
+          loading={loading}
+          onCreate={handleCreate}
+          activeDocId={activeDocId}
+          onSelect={(id) => {
+            setActiveDocId(id);
+            if (window.innerWidth < SIDEBAR_BREAKPOINT) setSidebarOpen(false);
+          }}
+          onDelete={handleDelete}
+        />
+      )}
+
+      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
         {!activeDocId ? (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <p style={{ color: 'var(--text-muted)' }}>Select or create a document</p>
           </div>
         ) : (
-          <Editor documentId={activeDocId} onTitleChange={handleTitleChange} />
+          <Editor
+            documentId={activeDocId}
+            onTitleChange={handleTitleChange}
+            onToggleSidebar={toggleSidebar}
+            sidebarOpen={sidebarOpen}
+          />
         )}
       </div>
     </div>

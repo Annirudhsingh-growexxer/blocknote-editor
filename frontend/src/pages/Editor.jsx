@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Share2, Pencil } from 'lucide-react';
+import { Share2, Pencil, PanelLeft } from 'lucide-react';
 import api from '../lib/api';
 import BlockEditor from '../components/editor/BlockEditor';
 import SaveIndicator from '../components/ui/SaveIndicator';
 import ShareModal from '../components/ui/ShareModal';
 import { useAutoSave } from '../hooks/useAutoSave';
 
-export default function Editor({ documentId, onTitleChange }) {
+export default function Editor({ documentId, onTitleChange, onToggleSidebar, sidebarOpen }) {
   const [doc, setDoc] = useState(null);
   const [blocks, setBlocks] = useState([]);
   const [hydrateNonce, setHydrateNonce] = useState(0);
@@ -93,6 +93,18 @@ export default function Editor({ documentId, onTitleChange }) {
         padding: '12px 24px', justifyContent: 'space-between'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {onToggleSidebar && (
+            <button
+              onClick={onToggleSidebar}
+              aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+              style={{
+                display: 'flex', alignItems: 'center', padding: '6px',
+                color: 'var(--text-secondary)', borderRadius: 'var(--radius-sm)'
+              }}
+            >
+              <PanelLeft size={16} />
+            </button>
+          )}
           <h1
             ref={titleRef}
             contentEditable={editingTitle}
@@ -136,7 +148,7 @@ export default function Editor({ documentId, onTitleChange }) {
         </div>
       </header>
 
-      <main style={{ width: '100%', padding: '36px 48px 160px' }}>
+      <main className="editor-main">
         <div style={{ width: '100%', maxWidth: 'none' }}>
           {editorNotice && (
             <div style={{
@@ -169,15 +181,7 @@ export default function Editor({ documentId, onTitleChange }) {
             </p>
           </div>
 
-          <div style={{
-            width: '100%',
-            minHeight: '72vh',
-            padding: '24px 28px 80px',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-lg)',
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0) 100%), var(--bg-surface)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)'
-          }}>
+          <div className="editor-box">
             <BlockEditor 
               documentId={documentId} 
               initialBlocks={blocks} 
