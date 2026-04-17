@@ -335,13 +335,13 @@ function Block({
                     if (e.key === 'Enter') {
                        e.preventDefault();
                        const trimmed = imageUrl.trim();
-                       const isValid = trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.startsWith('data:');
+                       const isValid = /^https?:\/\//i.test(trimmed) || trimmed.startsWith('/');
                        if (isValid) setImage(id, trimmed);
                     }
                   }}
                   onBlur={() => {
                     const trimmed = imageUrl.trim();
-                    const isValid = trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.startsWith('data:');
+                    const isValid = /^https?:\/\//i.test(trimmed) || trimmed.startsWith('/');
                     if (isValid && trimmed !== content.url) setImage(id, trimmed);
                   }}
                   disabled={readOnly}

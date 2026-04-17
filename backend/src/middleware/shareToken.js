@@ -8,7 +8,10 @@ const shareTokenMiddleware = async (req, res, next) => {
   }
 
   try {
-    const result = await db.query('SELECT * FROM documents WHERE share_token = $1', [token]);
+    const result = await db.query(
+      'SELECT id, title, is_public, share_token, created_at, updated_at FROM documents WHERE share_token = $1',
+      [token]
+    );
     const document = result.rows[0];
 
     if (!document || !document.is_public) {

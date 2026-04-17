@@ -713,10 +713,29 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     if (e.target.closest('.block-wrapper, .block-content, input, button, img, hr, .doc-menu')) return;
     setSelectedIds(new Set());
 
-    const editableBlocks = blocksRef.current.filter((block) => block.type !== 'divider' && block.type !== 'image');
-    const lastEditableBlock = editableBlocks[editableBlocks.length - 1];
-    if (lastEditableBlock) {
-      focusBlock(lastEditableBlock.id, 'end');
+    // Find the editable block whose wrapper is vertically closest to the click.
+    // This handles clicks in dead-space below or between blocks: the cursor lands
+    // at the nearest block rather than always jumping to the very last one.
+    let nearestEditableBlock = null;
+    let nearestDist = Infinity;
+    const clickY = e.clientY;
+
+    for (const block of blocksRef.current) {
+      if (block.type === 'divider' || block.type === 'image') continue;
+      const wrap = document.querySelector(`.block-wrapper[data-id="${block.id}"]`);
+      if (!wrap) continue;
+      const rect = wrap.getBoundingClientRect();
+      const centerY = (rect.top + rect.bottom) / 2;
+      const dist = Math.abs(clickY - centerY);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestEditableBlock = block;
+      }
+    }
+
+    if (nearestEditableBlock) {
+      const contentEl = document.querySelector(`.block-wrapper[data-id="${nearestEditableBlock.id}"] .block-content`);
+      placeCursorAtPoint(contentEl, e.clientX, e.clientY);
     } else {
       // No editable block exists (doc is all images/dividers or empty) —
       // spawn a paragraph so the user can start typing immediately.
@@ -765,6 +784,17 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
       selectionAnchorRef.current = id;
       return next;
     });
+
+    // If the pointer landed on the block wrapper's padding rather than directly
+    // on the contenteditable, the browser won't naturally focus it and the
+    // cursor silently disappears. Detect that case and manually place the
+    // cursor at the exact click coordinates.
+    if (!e.target.closest('.block-content, input, button, img, hr')) {
+      const contentEl = document.querySelector(`.block-wrapper[data-id="${id}"] .block-content`);
+      if (contentEl && contentEl.isContentEditable) {
+        placeCursorAtPoint(contentEl, e.clientX, e.clientY);
+      }
+    }
   };
 
   const deleteSelectedBlocks = async (idsToDelete) => {
@@ -825,6 +855,51 @@ export default function BlockEditor({ documentId, initialBlocks, onChange, readO
     preCaretRange.selectNodeContents(element);
     preCaretRange.setEnd(range.endContainer, range.endOffset);
     return preCaretRange.toString().length;
+  };
+
+  // Place the cursor inside `el` at the given viewport coordinates.
+  // Uses the browser's caretRangeFromPoint / caretPositionFromPoint API so
+  // the caret lands exactly where the user clicked — including when the click
+  // landed on padding around the contenteditable rather than on the text.
+  // Falls back to collapsing to the end of the element when the coordinates
+  // fall outside its text nodes (e.g. clicking below the last block).
+  const placeCursorAtPoint = (el, clientX, clientY) => {
+    if (!el || !el.isContentEditable) return;
+    el.focus();
+    try {
+      let placed = false;
+      if (document.caretRangeFromPoint) {
+        // Chrome / Safari / Edge
+        const range = document.caretRangeFromPoint(clientX, clientY);
+        if (range && el.contains(range.startContainer)) {
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          placed = true;
+        }
+      } else if (document.caretPositionFromPoint) {
+        // Firefox
+        const pos = document.caretPositionFromPoint(clientX, clientY);
+        if (pos && el.contains(pos.offsetNode)) {
+          const range = document.createRange();
+          range.setStart(pos.offsetNode, pos.offset);
+          range.collapse(true);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          placed = true;
+        }
+      }
+      if (!placed) {
+        // Coordinates outside the element's text — collapse cursor to end.
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    } catch (_) {}
   };
 
   const closeSlashMenu = (revertText = false) => {

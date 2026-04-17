@@ -159,7 +159,13 @@ export function useAutoSave(documentId, blocks, lastKnownUpdatedAt, onServerDocu
     // First load — just capture the baseline snapshot, don't save.
     if (hydratedDocumentRef.current !== documentId) {
       hydratedDocumentRef.current = documentId;
+      // Reset all save state for the new document so stale dirty/retry flags
+      // from the previous document don't bleed across and trigger a spurious PATCH.
       dirtyRef.current = false;
+      blocksVersionRef.current = 0;
+      isRetryingRef.current = false;
+      if (abortRef.current) abortRef.current.abort();
+      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
       setSaveStatus('idle');
       return;
     }

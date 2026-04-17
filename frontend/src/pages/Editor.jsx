@@ -56,7 +56,10 @@ export default function Editor({ documentId, onTitleChange, onToggleSidebar, sid
 
   const handleTitleBlur = async (e) => {
     setEditingTitle(false);
-    const newTitle = e.target.textContent.trim() || 'Untitled';
+    if (!doc) return; // guard: doc can be null during rapid navigation
+    const raw = e.target.textContent.trim();
+    // Apply same 500-char cap the server enforces so we never send an invalid request.
+    const newTitle = (raw.slice(0, 500)) || 'Untitled';
     if (newTitle !== doc.title) {
       setDoc({ ...doc, title: newTitle });
       onTitleChange(documentId, newTitle);
@@ -137,7 +140,7 @@ export default function Editor({ documentId, onTitleChange, onToggleSidebar, sid
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', position: 'relative' }}>
-          <SaveIndicator status={saveStatus} />
+          <SaveIndicator status={saveStatus} onRetry={flushNow} />
           
           <button onClick={() => setIsShareModalOpen(true)} style={{
             display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px',

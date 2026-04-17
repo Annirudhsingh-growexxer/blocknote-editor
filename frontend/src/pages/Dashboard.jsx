@@ -70,6 +70,7 @@ export default function Dashboard() {
       if (activeDocId === id) setActiveDocId(null);
     } catch (err) {
       console.error(err);
+      throw err; // re-throw so ConfirmModal can show the error phase
     }
   };
 

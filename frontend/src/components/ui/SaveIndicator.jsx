@@ -1,7 +1,7 @@
 import React from 'react';
-import { Check, AlertCircle } from 'lucide-react';
+import { Check, AlertCircle, RotateCcw } from 'lucide-react';
 
-export default function SaveIndicator({ status }) {
+export default function SaveIndicator({ status, onRetry }) {
   // status: 'idle' | 'saving' | 'saved' | 'error'
   
   if (status === 'idle') return null;
@@ -28,7 +28,24 @@ export default function SaveIndicator({ status }) {
       )}
       {status === 'error' && (
          <>
-           <AlertCircle size={12} /> ⚠ Save failed
+           <AlertCircle size={12} /> Save failed
+           {onRetry && (
+             <button
+               onClick={onRetry}
+               title="Retry save (or press Ctrl+S)"
+               aria-label="Retry save"
+               style={{
+                 display: 'inline-flex', alignItems: 'center', gap: '3px',
+                 marginLeft: '4px', padding: '2px 6px',
+                 background: 'rgba(224,92,92,0.15)', border: '1px solid var(--error)',
+                 borderRadius: 'var(--radius-sm)', color: 'var(--error)',
+                 fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
+                 lineHeight: 1,
+               }}
+             >
+               <RotateCcw size={10} /> Retry
+             </button>
+           )}
          </>
       )}
       <style>{`
