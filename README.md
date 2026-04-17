@@ -78,9 +78,9 @@ Copy `.env.example` to `.env` and fill in values before starting the stack.
 
 | Variable | Required | Default (docker-compose) | Description |
 |---|---|---|---|
-| `DB_PASSWORD` | ✅ Yes | _(none)_ | Password for the `blocknote` PostgreSQL user. Set to any strong string locally. |
-| `JWT_SECRET` | ✅ Yes | _(none)_ | Secret used to sign and verify JWT access tokens and refresh tokens. Must be at least 32 characters. Generate with: `openssl rand -hex 32` |
-| `VITE_API_URL` | ✅ Yes | `http://localhost:3001` | The base URL the frontend uses to reach the backend API. Baked into the Vite build at compile time. |
+| `DB_PASSWORD` |  Yes | _(none)_ | Password for the `blocknote` PostgreSQL user. Set to any strong string locally. |
+| `JWT_SECRET` |  Yes | _(none)_ | Secret used to sign and verify JWT access tokens and refresh tokens. Must be at least 32 characters. Generate with: `openssl rand -hex 32` |
+| `VITE_API_URL` |  Yes | `http://localhost:3001` | The base URL the frontend uses to reach the backend API. Baked into the Vite build at compile time. |
 | `DB_USER` | Set by compose | `blocknote` | PostgreSQL username. Hard-coded in `docker-compose.yml`; only needed if running manually. |
 | `DB_HOST` | Set by compose | `db` (Docker service name) | PostgreSQL hostname. When manual, use `localhost`. |
 | `DB_PORT` | Set by compose | `5432` | PostgreSQL port. |
